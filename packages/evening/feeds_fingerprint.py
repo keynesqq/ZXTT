@@ -79,14 +79,21 @@ def decide_feeds_status(
     fp = fingerprint_feeds(feeds_merged)
     prev_fp = ((prev_baseline or {}).get("codes") or {}).get(code, {}).get("fingerprint")
     today_fp = ((today_baseline or {}).get("codes") or {}).get(code, {}).get("fingerprint")
+    meta: dict[str, Any] = {"item_counts": counts}
 
-    if prev_baseline is None:
-        return "first_run", fp, {"item_counts": counts}
-    if prev_fp is None:
-        return "first_run", fp, {"item_counts": counts}
-    if fp != prev_fp or (today_baseline and today_fp and fp != today_fp):
-        return "refresh", fp, {"item_counts": counts, "prev_fingerprint": prev_fp}
-    return "reuse", fp, {"item_counts": counts, "prev_fingerprint": prev_fp}
+    if prev_fp is not None and fp != prev_fp:
+        meta["prev_fingerprint"] = prev_fp
+        return "refresh", fp, meta
+    if today_fp and fp != today_fp:
+        meta["prev_fingerprint"] = today_fp
+        return "refresh", fp, meta
+    if prev_fp is not None and fp == prev_fp:
+        meta["prev_fingerprint"] = prev_fp
+        return "reuse", fp, meta
+    if today_fp and fp == today_fp:
+        meta["prev_fingerprint"] = today_fp
+        return "reuse", fp, meta
+    return "first_run", fp, meta
 
 
 def diff_vs_baseline(

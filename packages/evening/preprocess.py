@@ -1,8 +1,13 @@
 """第 3 步 · 本地预处理编排（3.1–3.8）。"""
 from __future__ import annotations
 
+import json
+import time
 from datetime import date
 from typing import Any
+
+from core.io import atomic_write_text
+from core.paths import DATA_DIR
 
 from core.config import evening_cfg, normalize_code
 from core.trading_calendar import is_trading_day
@@ -44,6 +49,7 @@ def run_preprocess_evening(
     skip_cls_recollect: bool = False,
 ) -> dict[str, Any]:
     """晚间预处理全链 3.1–3.8，落盘 evening_context。"""
+    t0 = time.monotonic()
     cal = on_date or date.today()
     if not force and not is_trading_day(cal):
         return {
@@ -103,6 +109,26 @@ def run_preprocess_evening(
 
     meta = ctx.get("meta") or {}
     prompt = ctx.get("prompt") or {}
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    feeds_counts: dict[str, int] = {}
+    for rec in (digest_result.get("feeds_digest_by_code") or {}).values():
+        st = str(rec.get("status") or "unknown")
+        feeds_counts[st] = feeds_counts.get(st, 0) + 1
+    manifest_path = DATA_DIR / "ai_digest" / trade_date.isoformat() / "manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {"schema_version": 1, "trade_date": trade_date.isoformat(), "stages": {}}
+    else:
+        manifest = {"schema_version": 1, "trade_date": trade_date.isoformat(), "stages": {}}
+    manifest.setdefault("stages", {})["preprocess"] = {
+        "duration_ms": duration_ms,
+        "feeds_status": feeds_counts,
+        "feeds_fail_count": digest_result.get("fail_count", 0),
+    }
+    atomic_write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2))
     return {
         "outcome": "ok",
         "implemented_steps": list(_IMPLEMENTED_STEPS),
@@ -114,6 +140,8 @@ def run_preprocess_evening(
         "cls_articles_found": meta.get("cls_articles_found"),
         "prompt_stocks": len(prompt.get("stocks") or []),
         "feeds_digest_fail_count": digest_result.get("fail_count", 0),
+        "feeds_status": feeds_counts,
+        "duration_ms": duration_ms,
     }
 
 

@@ -48,7 +48,7 @@ _MOCK_RAW = """## 推送摘要
 
 
 class TestEveningGenerate(unittest.TestCase):
-    @patch("evening.generate.chat")
+    @patch("evening.synthesize.chat")
     def test_ai_mock(self, mock_chat) -> None:
         mock_chat.return_value = (_MOCK_RAW, "mock-model", "")
         result = run_evening_ai(on_date=_DAY, force=True)

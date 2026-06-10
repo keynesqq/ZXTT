@@ -188,14 +188,18 @@ def ths_cfg() -> dict:
 
 def evening_cfg() -> dict:
     fallback: dict = {
-        "feeds_digest_workers": 4,
+        "feeds_digest_workers": 8,
+        "feeds_digest_content_max": 280,
         "on_digest_fail": "degrade",
         "cls_digest_workers": 3,
         "cls_short_local_threshold": 200,
         "cls_digest_max_tokens": 2500,
         "verify_enabled": True,
         "write_bundle_full": False,
-        "preprocess_cls_recollect": True,
+        "preprocess_cls_recollect": False,
+        "synthesize_mode": "sharded",
+        "synthesize_workers": 4,
+        "synthesize_fallback_monolithic": True,
     }
     local = load_config().get("evening") or {}
     if not local:

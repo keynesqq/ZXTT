@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
@@ -211,6 +212,7 @@ def run_collect_evening(
     skip_network: bool = False,
 ) -> dict[str, Any]:
     """编排 7 路采集并写 collect_manifest。quote 失败则阻断。"""
+    t0 = time.monotonic()
     cal = on_date or date.today()
     if not force and not is_trading_day(cal):
         return {
@@ -320,20 +322,28 @@ def run_collect_evening(
                 else {"status": "warn", "path": _rel(p), "message": "file_missing"}
             )
     else:
-        sources["market_sentiment"] = _market_sentiment_status(trade, force=force)
-        sources["market_index"] = _index_status(cal, force=force)
-        sources["market_flow"] = _flow_status(cal, force=force)
-        sources["cls_finance"] = _cls_finance_status(trade, force=force)
-        sources["cls_articles"] = _cls_articles_status(trade, force=force)
+        market_jobs = {
+            "market_sentiment": lambda: _market_sentiment_status(trade, force=force),
+            "market_index": lambda: _index_status(cal, force=force),
+            "market_flow": lambda: _flow_status(cal, force=force),
+            "cls_finance": lambda: _cls_finance_status(trade, force=force),
+            "cls_articles": lambda: _cls_articles_status(trade, force=force),
+        }
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futs = {pool.submit(fn): name for name, fn in market_jobs.items()}
+            for fut in as_completed(futs):
+                sources[futs[fut]] = fut.result()
 
     overall = _aggregate_overall(sources)
     warnings = _collect_warnings(sources)
+    duration_ms = int((time.monotonic() - t0) * 1000)
     payload = {
         "schema_version": 1,
         "slot": _SLOT,
         "trade_date": trade.isoformat(),
         "calendar_date": cal.isoformat(),
         "collected_at_iso": now_iso(),
+        "duration_ms": duration_ms,
         "code_count": code_count,
         "row_count": row_count,
         "overall": overall,
@@ -349,6 +359,7 @@ def run_collect_evening(
         "code_count": code_count,
         "row_count": row_count,
         "manifest_path": _rel(manifest_path),
+        "duration_ms": duration_ms,
         "sources": sources,
         "warnings": warnings,
     }

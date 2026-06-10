@@ -40,12 +40,15 @@ def _load_digest(path: Path) -> dict[str, Any] | None:
 
 
 def _build_user_prompt(code: str, name: str, feeds: dict, stance: str, groups: list[str]) -> str:
+    content_max = int(evening_cfg().get("feeds_digest_content_max") or 280)
     lines = [f"code={code} name={name} stance={stance} groups={','.join(groups)}"]
     for cat in _FEED_KEYS:
         for item in feeds.get(cat) or []:
             title = item.get("title", "")
             pd = item.get("pub_date", "")
-            content = item.get("content") or item.get("extra") or ""
+            content = str(item.get("content") or item.get("extra") or "")
+            if len(content) > content_max:
+                content = content[:content_max] + "…"
             lines.append(f"[{cat}] {pd} {title} {content}".strip())
     return "\n".join(lines)
 

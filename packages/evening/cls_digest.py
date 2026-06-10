@@ -1,6 +1,7 @@
 """第 3 步 3.8 · 财联社 B 层 digest。"""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +19,27 @@ from core.paths import DATA_DIR
 from market.cls.daily_articles import ARTICLE_SLOTS
 
 _DIGEST_DIR = DATA_DIR / "ai_digest"
+
+
+def _article_fingerprint(article: dict[str, Any]) -> str:
+    title = str(article.get("title") or "")
+    content = str(article.get("content") or "")
+    pub = str(article.get("published_at") or article.get("published_ts") or "")
+    payload = json.dumps(
+        {"title": title, "pub": pub, "len": len(content), "head": content[:400]},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _load_cached_digest(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def _local_cls_digest(content: str, title: str) -> dict[str, Any]:
@@ -85,8 +107,18 @@ def run_cls_digest(
         art = articles.get(key)
         if not art or not art.get("content"):
             return key, {"status": "missing", "ok": False, "label": slot.get("label", key)}
-        digest = _digest_article(key, art)
         path = _DIGEST_DIR / trade_date.isoformat() / f"cls_{key}.json"
+        fp = _article_fingerprint(art)
+        cached = _load_cached_digest(path)
+        if cached and cached.get("ok") and cached.get("article_fingerprint") == fp:
+            return key, {
+                **cached,
+                "status": "reuse",
+                "path": str(path),
+                "label": slot.get("label", key),
+            }
+        digest = _digest_article(key, art)
+        digest["article_fingerprint"] = fp
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(path, json.dumps(digest, ensure_ascii=False, indent=2))
         return key, {**digest, "path": str(path), "label": slot.get("label", key)}
