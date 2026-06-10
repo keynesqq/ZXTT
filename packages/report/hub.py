@@ -115,12 +115,51 @@ def hub_url(day: date | None = None) -> str:
     return f"{index.as_uri()}?date={cal.isoformat()}"
 
 
-def open_hub(day: date | None = None, *, open_browser: bool = True) -> str:
+_BROWSER_MARKER = _HUB_DIR / "browser_session.json"
+
+
+def _load_browser_session() -> dict[str, Any]:
+    return _load_json(_BROWSER_MARKER) or {}
+
+
+def _save_browser_session(cal: date, url: str, *, slot: str | None = None) -> None:
+    _HUB_DIR.mkdir(parents=True, exist_ok=True)
+    session = _load_browser_session()
+    slots = dict(session.get("slots") or {}) if session.get("trade_date") == cal.isoformat() else {}
+    if slot:
+        slots[slot] = now_iso()
+    atomic_write_text(
+        _BROWSER_MARKER,
+        json.dumps(
+            {
+                "trade_date": cal.isoformat(),
+                "url": url,
+                "opened_at": now_iso(),
+                "slots": slots,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+    )
+
+
+def _slot_opened_today(cal: date, slot: str) -> bool:
+    session = _load_browser_session()
+    if session.get("trade_date") != cal.isoformat():
+        return False
+    return slot in (session.get("slots") or {})
+
+
+def open_hub(day: date | None = None, *, open_browser: bool = True, slot: str | None = None) -> str:
     cal = day or today_cn()
     publish_hub(cal)
     url = hub_url(cal)
-    if open_browser:
-        webbrowser.open(url)
+    if not open_browser:
+        return url
+    if slot and _slot_opened_today(cal, slot):
+        return url
+    webbrowser.open(url, new=0)
+    _save_browser_session(cal, url, slot=slot)
     return url
 
 

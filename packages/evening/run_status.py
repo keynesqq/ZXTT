@@ -85,7 +85,7 @@ def publish_status(day: date, status: dict[str, Any]) -> None:
 def open_report_browser(day: date) -> None:
     from report.hub import open_hub
 
-    open_hub(day, open_browser=True)
+    open_hub(day, open_browser=True, slot="evening")
 
 
 def begin_run(day: date, *, open_browser: bool = True) -> dict[str, Any]:

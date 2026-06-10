@@ -67,7 +67,7 @@ def begin_run(day: date, *, open_browser: bool = True) -> None:
 
     publish_hub(day)
     if open_browser:
-        open_hub(day, open_browser=True)
+        open_hub(day, open_browser=True, slot="morning")
 
 
 def step_begin(day: date, step: str, detail: str = "") -> None:
