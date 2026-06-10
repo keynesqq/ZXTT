@@ -13,7 +13,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "packages"))
 
 from collect.manifest import load_manifest
-from market.cls.daily_articles import ARTICLE_SLOTS, articles_publish_ready, _match_slot
+from market.cls.daily_articles import (
+    ARTICLE_SLOTS,
+    _match_slot,
+    before_typical_article_publish,
+    incomplete_articles_hint,
+)
 from market.sentiment import (
     _cls_articles_payload_ok,
     _collect_cls_articles_resolved,
@@ -92,7 +97,7 @@ class ClsArticlesGateTests(unittest.TestCase):
         self.assertFalse(_match_slot("【VIP】涨停分析", limit_slot, trade_date=d))
 
     def test_should_collect_articles_only_when_requested(self):
-        cfg = {"cls_articles_enabled": True, "cls_articles_evening_only": True}
+        cfg = {"cls_articles_enabled": True}
         self.assertFalse(_should_collect_cls_articles(False, cfg))
         self.assertTrue(_should_collect_cls_articles(True, cfg))
 
@@ -103,7 +108,7 @@ class ClsArticlesRetryTests(unittest.TestCase):
         first = {"found_count": 2, "articles": {}, "skipped": False}
         second = {"found_count": 5, "articles": {"a": 1}, "skipped": False}
         with (
-            mock.patch("market.cls.daily_articles.articles_publish_ready", return_value=(True, "")),
+            mock.patch("market.cls.daily_articles.before_typical_article_publish", return_value=False),
             mock.patch(
                 "market.sentiment._cls_articles_payload_ok",
                 side_effect=[False, True],
@@ -232,13 +237,20 @@ class CollectMarketSentimentTests(unittest.TestCase):
             self.assertEqual(loaded["limit_up_count"], 42)
 
 
-class ArticlesPublishReadyTests(unittest.TestCase):
-    def test_before_cutoff_not_ready(self):
+class ClsArticlesHintTests(unittest.TestCase):
+    def test_before_cutoff_flag(self):
         d = date(2026, 6, 9)
-        now = __import__("datetime").datetime(2026, 6, 9, 15, 0)
-        ready, reason = articles_publish_ready(d, now=now)
-        self.assertFalse(ready)
-        self.assertIn("20:00", reason)
+        tz = __import__("zoneinfo").ZoneInfo("Asia/Shanghai")
+        now = __import__("datetime").datetime(2026, 6, 9, 15, 0, tzinfo=tz)
+        self.assertTrue(before_typical_article_publish(d, now=now))
+
+    def test_incomplete_hint_before_cutoff(self):
+        d = date(2026, 6, 9)
+        tz = __import__("zoneinfo").ZoneInfo("Asia/Shanghai")
+        now = __import__("datetime").datetime(2026, 6, 9, 15, 0, tzinfo=tz)
+        hint = incomplete_articles_hint(d, 2, 5, now=now)
+        self.assertIn("可能尚未发布", hint or "")
+        self.assertIn("2/5", hint or "")
 
 
 if __name__ == "__main__":

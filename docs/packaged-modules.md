@@ -804,6 +804,60 @@ python run.py flow collect --force --slot midday --date 2026-06-10
 
 ---
 
+## 9. 晚间管线 `evening`（规划中）
+
+> **规格已定稿**，代码与编排 CLI **待实现**。开发主文档：[`evening-dev.md`](evening-dev.md)。
+
+### 做什么
+
+把第 2 步 7 路 raw JSON 经本地预处理（3.1–3.8）收成一份 `evening_context`，再交 AI 出 22 点「明日作战卡」（HTML + 微信简报 + 明日预期）。
+
+### 与八个采集模块的关系
+
+```
+quote / announcement / news query  ─┐
+ecosystem / cls / index / flow     ─┼→ 第 2 步采集
+                                    │
+                                    ▼
+                         preprocess 3.1–3.8（待实现）
+                                    │
+                                    ▼
+                    evening_context/{date}.json
+                                    │
+                                    ▼
+                         generate 第 4–5 步（待实现）
+```
+
+- **分析按 code**（31 只）；**展示按 group**（35 行板块归属）。
+- **仅公告+资讯**走指纹增量 reuse；财联社 B 层长文、行情等每日刷新。
+- 22:00 跑 `preprocess` 前建议 **重采** `cls collect --articles`（五篇长文常 20:00 后才齐）。
+
+### 规划命令
+
+```bash
+python run.py collect --slot evening      # 第 2 步编排（待实现）
+python run.py preprocess --slot evening   # 第 3 步 3.1–3.8（待实现）
+python run.py generate --slot evening     # 第 4–5 步（待实现）
+python run.py generate --slot evening --phase ai      # 仅 AI 研判
+python run.py generate --slot evening --phase render  # 仅 HTML/微信
+```
+
+五步详文：[`evening-dev.md`](evening-dev.md) §八附录（step1–5 · config · schemas · runbook）。
+
+### 主产出（实现后）
+
+| 路径 | 说明 |
+|------|------|
+| `data/evening_context/{date}.json` | 第 4/5 步读入 |
+| `data/scheduled_ai/evening_{date}.json` | 第 4 步写、第 5 步读 |
+| `data/expectations/{date}.json` | 明日预期（按 code） |
+| `reports/{date}/daily_evening.html` | 第 5 步 HTML |
+| `data/last_report.json` | 最近一次报告路径 |
+| `data/ai_digest/{date}/` | 个股 feeds + 财联社 cls digest |
+| `data/evening_baseline/{date}.json` | 公告资讯指纹基准 |
+
+---
+
 ## 八个模块的关系
 
 ```

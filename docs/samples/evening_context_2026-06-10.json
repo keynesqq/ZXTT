@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "meta": {
+    "trade_date": "2026-06-10",
+    "calendar_date": "2026-06-10",
+    "context_as_of": "2026-06-10 22:15:00",
+    "code_count": 31,
+    "row_count": 35,
+    "cls_articles_found": "4/5",
+    "pipeline_step": "3.7+3.8",
+    "paths": {
+      "quote": "data/quote_query_2026-06-10.json",
+      "collect_manifest": "data/collect_manifest/2026-06-10.json"
+    }
+  },
+  "group_order": [
+    "我的",
+    "想买的",
+    "高度关注",
+    "跌幅达到预期重点关注"
+  ],
+  "memberships": [],
+  "structure": {
+    "groups": []
+  },
+  "health": {
+    "global": [
+      {
+        "code": "FLOW_L1_FAIL",
+        "level": "warn"
+      }
+    ],
+    "health_brief": "大盘主力缺失；财联社 4/5",
+    "trust_flags": {
+      "market_main_flow": false,
+      "cls_articles_complete": false,
+      "watchlist_flow": true
+    }
+  },
+  "market_local": {
+    "l1_brief": "池子中性；指数分化；北向可疑",
+    "l2_brief": "主线：电力设备；风口：…",
+    "constraints": [
+      "禁编造大盘主力净流入"
+    ]
+  },
+  "events_by_code": {
+    "301293": {
+      "bear": [
+        {
+          "tier": "high_bear",
+          "label": "利空",
+          "title": "股东拟减持…",
+          "is_new": true
+        }
+      ],
+      "summary": {
+        "利空": 1
+      },
+      "display": []
+    }
+  },
+  "industry_in_hot_by_code": {
+    "600021": true
+  },
+  "by_code": {
+    "600021": {
+      "local_block": {
+        "code": "600021",
+        "name": "上海电力",
+        "primary_stance": "candidate",
+        "stance_label": "候选",
+        "groups": [
+          "想买的",
+          "高度关注"
+        ],
+        "quote_line": "17.27 -5.21% | 5日-12.7% | 主力-1.2亿",
+        "tags": [
+          "短线弱",
+          "主力流出"
+        ],
+        "events_label": "无规则命中"
+      },
+      "feeds_digest_ref": "stock_600021"
+    }
+  },
+  "feeds_digest_by_code": {
+    "600021": {
+      "status": "reuse",
+      "reuse_reason": "NO_NEW_ANNOUNCEMENT_OR_NEWS",
+      "digested_at": "2026-06-08 22:10:00",
+      "summary": "…",
+      "ok": true
+    }
+  },
+  "prompt": {
+    "priority_instructions": "31只同级分析…",
+    "global": "…",
+    "feeds_digest_bundle": "…",
+    "events_block": "…",
+    "cls": {
+      "preamble": "勿重复 A 层数字…",
+      "articles": [],
+      "missing_note": "数据看盘：未采集到当日文章"
+    },
+    "stocks": [
+      {
+        "code": "600021",
+        "name": "上海电力",
+        "stance_hint": "候选",
+        "prompt_line": "…"
+      }
+    ]
+  },
+  "cls_digest": {
+    "expected": 5,
+    "found": 4,
+    "digested_ok": 4,
+    "complete": false,
+    "missing_slots": [
+      "data_watch"
+    ],
+    "items": []
+  },
+  "cls_mentions_by_code": {}
+}

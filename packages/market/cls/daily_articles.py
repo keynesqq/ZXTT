@@ -60,35 +60,38 @@ _SUBJECT_RN = 30
 _ID_SCAN_RADIUS = 25
 _MAX_ID_SCAN = 20
 _MAX_GAP_SCAN = 40
-_DEFAULT_ARTICLES_AFTER = time(20, 0)
+_TYPICAL_ARTICLES_AFTER = time(20, 0)
 
 
-def _articles_after_time() -> time:
-    raw = str(market_cfg().get("cls_articles_after") or "20:00").strip()
-    parts = raw.split(":")
-    try:
-        return time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
-    except (ValueError, IndexError):
-        return _DEFAULT_ARTICLES_AFTER
-
-
-def articles_publish_ready(
+def before_typical_article_publish(
     for_date: date | None = None,
     *,
-    after: time | None = None,
     now: datetime | None = None,
-) -> tuple[bool, str]:
-    """当日固定栏目是否已进入可采集窗口（收盘后）。"""
+) -> bool:
+    """当日是否尚未到固定栏目通常出齐时间（仅用于提示，不阻止采集）。"""
     d = for_date or date.today()
     now = now or datetime.now(ZoneInfo("Asia/Shanghai"))
-    cutoff = after or _articles_after_time()
-    if now.date() < d:
-        return False, f"未到 {d.isoformat()}，固定栏目尚未发布"
-    if now.date() > d:
-        return True, "历史交易日，可读取已发布栏目"
-    if now.time() < cutoff:
-        return False, f"固定栏目通常 {cutoff.strftime('%H:%M')} 后才齐，当前不采集"
-    return True, "收盘后，可采集当日固定栏目"
+    return now.date() == d and now.time() < _TYPICAL_ARTICLES_AFTER
+
+
+def incomplete_articles_hint(
+    for_date: date | None,
+    found_count: int,
+    expected_count: int | None = None,
+    *,
+    now: datetime | None = None,
+) -> str | None:
+    """未满预期篇数且早于通常发布时间时，返回友好提示。"""
+    expected = expected_count if expected_count is not None else len(ARTICLE_SLOTS)
+    if found_count >= expected:
+        return None
+    d = for_date or date.today()
+    if not before_typical_article_publish(d, now=now):
+        return None
+    return (
+        f"提示：当前早于 {_TYPICAL_ARTICLES_AFTER.strftime('%H:%M')}，"
+        f"部分长文可能尚未发布（已找到 {found_count}/{expected}）"
+    )
 
 
 def load_cls_daily_articles(for_date: date | None = None) -> dict[str, Any] | None:
@@ -505,11 +508,11 @@ def collect_cls_daily_articles(
     id_scan: bool = True,
     force: bool = False,
 ) -> dict[str, Any]:
-    """采集五篇固定栏目；仅保留发布日=交易日的文章。收盘前跳过且不报警。"""
+    """采集五篇固定栏目；仅保留发布日=交易日的文章。"""
     d = for_date or date.today()
     cal = calendar_date or d
-    ready, ready_reason = articles_publish_ready(d)
-    if not ready:
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    if now.date() < d:
         cached = load_cls_daily_articles(d)
         if cached and cached.get("articles"):
             return cached
@@ -519,7 +522,7 @@ def collect_cls_daily_articles(
             "collected_at": now_ts(),
             "collected_at_iso": ts_iso(now_ts()),
             "skipped": True,
-            "skip_reason": ready_reason,
+            "skip_reason": f"未到 {d.isoformat()}，固定栏目尚未发布",
             "articles": {},
             "found_count": 0,
             "expected_count": len(ARTICLE_SLOTS),
@@ -552,14 +555,17 @@ def collect_cls_daily_articles(
             **rec,
         }
 
+    hint = incomplete_articles_hint(d, len(articles), len(ARTICLE_SLOTS), now=now)
+    if hint:
+        warnings.insert(0, hint)
+
     payload: dict[str, Any] = {
         "source": "cls.cn",
         "trade_date": d.isoformat(),
         "collected_at": collected_at,
         "collected_at_iso": ts_iso(collected_at),
         "request_ts": now_ts(),
-        "publish_ready": True,
-        "publish_ready_reason": ready_reason,
+        "before_typical_publish": before_typical_article_publish(d, now=now),
         "articles": articles,
         "found_count": len(articles),
         "expected_count": len(ARTICLE_SLOTS),

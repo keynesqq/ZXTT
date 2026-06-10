@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "trade_date": "2026-06-10",
+  "stages": {
+    "feeds_digests": {
+      "ok": true,
+      "refresh_count": 3,
+      "reuse_count": 28,
+      "failed_count": 0,
+      "duration_ms": 45000
+    },
+    "cls_digests": {
+      "ok": false,
+      "expected": 5,
+      "found": 4,
+      "digested_ok": 4,
+      "duration_ms": 12000,
+      "items": [
+        {
+          "key": "daily_review",
+          "status": "ok",
+          "ok": true
+        },
+        {
+          "key": "data_watch",
+          "status": "missing",
+          "ok": false
+        }
+      ]
+    },
+    "synthesize": {
+      "ok": true,
+      "model": "gpt-4o",
+      "missing_codes": []
+    }
+  },
+  "entries": [
+    {
+      "kind": "feeds",
+      "source_id": "stock_600021",
+      "path": "data/ai_digest/2026-06-10/stock_600021.json"
+    },
+    {
+      "kind": "cls_article",
+      "source_id": "cls_daily_review",
+      "path": "data/ai_digest/2026-06-10/cls_daily_review.json"
+    }
+  ]
+}

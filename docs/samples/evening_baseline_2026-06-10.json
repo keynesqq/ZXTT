@@ -1,0 +1,15 @@
+{
+  "trade_date": "2026-06-10",
+  "prev_trade_date": "2026-06-09",
+  "codes": {
+    "600021": {
+      "fingerprint": "abc123…",
+      "item_counts": {
+        "公告": 0,
+        "资讯": 2
+      },
+      "last_digest_trade_date": "2026-06-10",
+      "last_digest_source_id": "stock_600021"
+    }
+  }
+}

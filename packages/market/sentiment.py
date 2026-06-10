@@ -153,14 +153,13 @@ def _collect_cls_articles_resolved(
     force: bool = False,
     calendar_date: date | None = None,
 ) -> dict[str, Any]:
-    """采集财联社固定栏目；未齐且已过发布窗口时 force 补采一次。"""
-    from market.cls.daily_articles import articles_publish_ready, collect_cls_daily_articles
+    """采集财联社固定栏目；未齐且已过通常发布时间时 force 补采一次。"""
+    from market.cls.daily_articles import before_typical_article_publish, collect_cls_daily_articles
 
     daily = collect_cls_daily_articles(
         for_date=trade_date, force=force, calendar_date=calendar_date
     )
-    ready, _ = articles_publish_ready(trade_date)
-    if ready and not _cls_articles_payload_ok(daily) and not force:
+    if not before_typical_article_publish(trade_date) and not _cls_articles_payload_ok(daily) and not force:
         daily = collect_cls_daily_articles(
             for_date=trade_date, force=True, calendar_date=calendar_date
         )

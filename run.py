@@ -338,6 +338,46 @@ def cmd_flow_collect(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_collect(args: argparse.Namespace) -> int:
+    from evening.collect import run_collect_evening
+
+    slot = (args.slot or "evening").strip().lower()
+    if slot != "evening":
+        print({"outcome": "error", "reason": "unsupported_slot", "slot": slot})
+        return 1
+    result = run_collect_evening(on_date=_parse_date(args.date), force=args.force)
+    print(result)
+    return 0 if result.get("overall") != "fail" else 1
+
+
+def cmd_generate(args: argparse.Namespace) -> int:
+    from evening.pipeline import run_evening_generate
+
+    slot = (args.slot or "evening").strip().lower()
+    if slot != "evening":
+        print({"outcome": "error", "reason": "unsupported_slot", "slot": slot})
+        return 1
+    phase = (args.phase or "all").strip().lower()
+    if phase not in ("all", "ai", "render"):
+        print({"outcome": "error", "reason": "unsupported_phase", "phase": phase})
+        return 1
+    result = run_evening_generate(on_date=_parse_date(args.date), phase=phase, force=args.force)
+    print(result)
+    return 0 if result.get("outcome") != "fail" else 1
+
+
+def cmd_preprocess(args: argparse.Namespace) -> int:
+    from evening.preprocess import run_preprocess_evening
+
+    slot = (args.slot or "evening").strip().lower()
+    if slot != "evening":
+        print({"outcome": "error", "reason": "unsupported_slot", "slot": slot})
+        return 1
+    result = run_preprocess_evening(on_date=_parse_date(args.date), force=args.force)
+    print(result)
+    return 0 if result.get("outcome") != "fail" else 1
+
+
 def _add_ecosystem_collect_parser(sub) -> None:
     p = sub.add_parser("collect", help="采集涨停/炸板/昨涨停三池 + pool 参考分")
     p.add_argument("--force", action="store_true", help="忽略交易日检查")
@@ -419,6 +459,22 @@ def main() -> None:
     q.add_argument("--all", action="store_true")
     q.add_argument("--date", default=None)
 
+    collect_mod = sub.add_parser("collect", help="晚间管线 · 第 2 步采集编排")
+    collect_mod.add_argument("--slot", default="evening", choices=("evening",))
+    collect_mod.add_argument("--force", action="store_true")
+    collect_mod.add_argument("--date", default=None)
+
+    preprocess_mod = sub.add_parser("preprocess", help="晚间管线 · 第 3 步本地预处理")
+    preprocess_mod.add_argument("--slot", default="evening", choices=("evening",))
+    preprocess_mod.add_argument("--force", action="store_true")
+    preprocess_mod.add_argument("--date", default=None)
+
+    generate_mod = sub.add_parser("generate", help="晚间管线 · 第 4/5 步 AI+报告")
+    generate_mod.add_argument("--slot", default="evening", choices=("evening",))
+    generate_mod.add_argument("--phase", default="all", choices=("all", "ai", "render"))
+    generate_mod.add_argument("--force", action="store_true")
+    generate_mod.add_argument("--date", default=None)
+
     auction = sub.add_parser("auction", help="集合竞价走势")
     auction.add_argument("--codes", default="")
     auction.add_argument("--force", action="store_true")
@@ -442,6 +498,12 @@ def main() -> None:
         raise SystemExit(cmd_news_query(args))
     if args.cmd == "quote" and args.quote_cmd == "query":
         raise SystemExit(cmd_quote_query(args))
+    if args.cmd == "collect":
+        raise SystemExit(cmd_collect(args))
+    if args.cmd == "preprocess":
+        raise SystemExit(cmd_preprocess(args))
+    if args.cmd == "generate":
+        raise SystemExit(cmd_generate(args))
     if args.cmd == "auction":
         raise SystemExit(cmd_auction(args))
     raise SystemExit(2)

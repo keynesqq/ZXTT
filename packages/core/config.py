@@ -186,6 +186,52 @@ def ths_cfg() -> dict:
     return {**ext_ths, **local} if ext_ths else local
 
 
+def evening_cfg() -> dict:
+    fallback: dict = {
+        "feeds_digest_workers": 4,
+        "on_digest_fail": "degrade",
+        "cls_digest_workers": 3,
+        "cls_short_local_threshold": 200,
+        "cls_digest_max_tokens": 2500,
+        "verify_enabled": True,
+        "write_bundle_full": False,
+        "preprocess_cls_recollect": True,
+    }
+    local = load_config().get("evening") or {}
+    if not local:
+        return fallback
+    return _merge_section_dict(fallback, local)
+
+
+def events_cfg() -> dict:
+    fallback: dict = {
+        "enable_medium": True,
+        "display_max": 3,
+        "lookback_days": 3,
+    }
+    local = load_config().get("events") or {}
+    if not local:
+        return fallback
+    return _merge_section_dict(fallback, local)
+
+
+def tags_cfg() -> dict:
+    fallback: dict = {
+        "pct_drop_heavy": -7,
+        "pct_drop_mild": -5,
+        "pct_rise_heavy": 7,
+        "main_net_ratio_heavy": 0.15,
+        "main_net_ratio_mild": 0.05,
+        "amount_ratio_shrink": 0.7,
+        "amount_ratio_expand": 1.3,
+        "max_display_tags": 5,
+    }
+    local = load_config().get("tags") or {}
+    if not local:
+        return fallback
+    return _merge_section_dict(fallback, local)
+
+
 def legacy_config_path() -> Path | None:
     """可选：只读老项目 ZXReport config.yaml（不修改其源码）。"""
     raw = (load_config().get("legacy") or {}).get("zxreport_config")

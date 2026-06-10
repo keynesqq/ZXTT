@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "slot": "evening",
+  "trade_date": "2026-06-10",
+  "model": "gpt-4o",
+  "saved_at": "2026-06-10T22:18:00+08:00",
+  "summary": "【环境】…\\n【我的】…",
+  "body": "## 我的 · 持仓深度\\n\\n### 600519 …",
+  "raw": "…",
+  "missing_codes": [],
+  "truncated_suspected": false,
+  "ai_error": null
+}

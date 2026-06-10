@@ -40,6 +40,12 @@ python run.py flow collect
 
 非交易日加 `--force --date YYYY-MM-DD`。
 
+## 晚间报告（规划中）
+
+22 点「明日作战卡」**开发主文档**：[`docs/evening-dev.md`](docs/evening-dev.md)（五步对齐、数据路径、实现落点）。精简总览：[`evening-pipeline.md`](docs/evening-pipeline.md)。
+
+规划命令：`collect --slot evening` → `preprocess --slot evening` → `generate --slot evening`（尚未实现）。
+
 ## 测试
 
 ```bash

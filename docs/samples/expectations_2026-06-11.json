@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "source_trade_date": "2026-06-10",
+  "target_trade_date": "2026-06-11",
+  "saved_at": "2026-06-10T22:18:00+08:00",
+  "context_as_of": "2026-06-10 22:15:00",
+  "slot": "evening",
+  "meta": {
+    "l1_axes": "来自 market_local",
+    "constraints_applied": true
+  },
+  "stocks": {
+    "600021": {
+      "code": "600021",
+      "name": "上海电力",
+      "primary_stance": "candidate",
+      "stance_label": "候选",
+      "groups": [
+        "想买的"
+      ],
+      "short_expectation": "观望等企稳",
+      "expected_open": "偏低开",
+      "message_net": "偏空",
+      "check_925": "…",
+      "critical": []
+    }
+  },
+  "missing_codes": [],
+  "codes_analysis_order": [
+    "600021"
+  ]
+}

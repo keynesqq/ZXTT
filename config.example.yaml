@@ -6,6 +6,8 @@ ths:
     by_name:
     - 我的
     - 想买的
+    - 高度关注
+    - 跌幅达到预期重点关注
 quote:
   primary: ths
   secondary: tencent
@@ -48,8 +50,6 @@ market:
   cls_wind: true
   cls_mainline: true
   cls_articles_enabled: true
-  cls_articles_evening_only: true
-  cls_articles_after: "20:00"
   cls_articles_use_ai: false
 feeds:
   announcement:
@@ -77,3 +77,25 @@ news:
     trigger: on_empty
   max_workers: 8
   akshare_timeout_sec: 45
+
+# 22 点晚间管线（详见 docs/evening-config.md）
+evening:
+  feeds_digest_workers: 4
+  on_digest_fail: degrade
+  cls_digest_workers: 3
+  cls_short_local_threshold: 200
+  cls_digest_max_tokens: 2500
+  verify_enabled: true
+  write_bundle_full: false
+  preprocess_cls_recollect: true
+
+events:
+  enable_medium: true
+  display_max: 3
+  lookback_days: 3
+
+wechat:
+  enabled: false
+  # PushPlus 令牌（与老项目 .env 中 WECHAT_PUSH_TOKEN 相同）
+  webhook_url: ""
+  title_prefix: "ZXTT 盘后"
