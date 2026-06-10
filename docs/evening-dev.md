@@ -1,7 +1,7 @@
 # 22 点晚间报告 · 开发文档（合并版）
 
 > **主入口**：本文件为开发总览；各步详文见 §十二附录。  
-> 状态：**规格定稿** · `packages/evening/` 与编排 CLI **待实现**  
+> 状态：**已实现** · 一键命令 `python run.py evening`（自动打开进度页）  
 > 对照（只读）：`D:\ZXReport` · 更新：2026-06-10
 
 ## 产品一句话
@@ -43,12 +43,13 @@ flowchart LR
 | **①** | 自选世界 | 否 | `quote query --all` | `quote_query_{date}.json` | [step1](evening-step1-watchlist.md) |
 | **②** | 事实采集 | 否 | `collect --slot evening` | 7 路 raw + `collect_manifest` | [step2](evening-step2-collect.md) |
 | **③** | 本地预处理 | 3.6/3.8 | `preprocess --slot evening` | `evening_context/{date}.json` | [step3](evening-step3-preprocess.md) |
-| **④** | AI 研判 | 是×1 | `generate --phase ai` | `scheduled_ai` + `expectations` | [step4](evening-step4-ai.md) |
+| **④** | AI 研判 | 是（拆分默认） | `generate --phase ai` | `scheduled_ai` + `expectations` | [step4](evening-step4-ai.md) |
 | **⑤** | 触达 | 否 | `generate --phase render` | `daily_evening.html` + 微信 | [step5](evening-step5-render.md) |
 
 ```bash
-python run.py collect --slot evening      # ②（待实现；② 含 ① quote）
-python run.py preprocess --slot evening   # ③（前重采 cls --articles）
+python run.py evening                     # ②→③→④→⑤ 一键（推荐）
+python run.py collect --slot evening      # ②（含 ① quote）
+python run.py preprocess --slot evening   # ③
 python run.py generate --slot evening     # ④ → ⑤
 ```
 

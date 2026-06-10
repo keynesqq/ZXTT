@@ -139,6 +139,19 @@ def run_monolithic_synthesize(ctx: dict[str, Any], user_prompt: str) -> dict[str
     }
 
 
+def _touch_ai_progress(ctx: dict[str, Any], detail: str, progress_pct: int) -> None:
+    try:
+        from datetime import date as date_cls
+
+        from evening.run_status import touch_progress
+
+        td = (ctx.get("meta") or {}).get("trade_date") or ""
+        if td:
+            touch_progress(date_cls.fromisoformat(str(td)), detail=detail, progress_pct=progress_pct)
+    except Exception:
+        pass
+
+
 def run_sharded_synthesize(ctx: dict[str, Any]) -> dict[str, Any]:
     t0 = time.monotonic()
     cfg = evening_cfg()
@@ -154,6 +167,7 @@ def run_sharded_synthesize(ctx: dict[str, Any]) -> dict[str, Any]:
         timeout_sec=60.0,
     )
     global_summary = _normalize_global_raw(global_raw)
+    _touch_ai_progress(ctx, "全局摘要已完成，分档并行合成中…", 48)
     if not global_summary:
         return {
             "mode": "sharded",
@@ -196,11 +210,17 @@ def run_sharded_synthesize(ctx: dict[str, Any]) -> dict[str, Any]:
     outputs: dict[str, tuple[str, str]] = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futs = {pool.submit(_run_shard, item): item[0] for item in _SHARDS}
+        shard_pct = {"holding": 55, "candidate": 62, "watch_right": 68, "theme_other": 74}
         for fut in as_completed(futs):
             stance, summary_part, body_part, rec = fut.result()
             shard_records.append(rec)
             if rec.get("ok"):
                 outputs[stance] = (summary_part, body_part)
+                _touch_ai_progress(
+                    ctx,
+                    f"分片完成：{rec.get('stance', stance)}（{rec.get('stock_count', 0)} 只）",
+                    shard_pct.get(stance, 70),
+                )
 
     critical = ("holding", "candidate")
     failed_critical = [s for s in critical if s in {_r["stance"] for _r in shard_records if not _r.get("ok")}]

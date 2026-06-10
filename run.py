@@ -366,6 +366,18 @@ def cmd_generate(args: argparse.Namespace) -> int:
     return 0 if result.get("outcome") != "fail" else 1
 
 
+def cmd_evening(args: argparse.Namespace) -> int:
+    from evening.run_full import run_evening_pipeline
+
+    result = run_evening_pipeline(
+        on_date=_parse_date(args.date),
+        force=args.force,
+        open_browser=not args.no_open,
+    )
+    print(result)
+    return 0 if result.get("outcome") == "ok" else 1
+
+
 def cmd_preprocess(args: argparse.Namespace) -> int:
     from evening.preprocess import run_preprocess_evening
 
@@ -459,6 +471,11 @@ def main() -> None:
     q.add_argument("--all", action="store_true")
     q.add_argument("--date", default=None)
 
+    evening_mod = sub.add_parser("evening", help="晚间管线 · 一键跑通并打开进度页")
+    evening_mod.add_argument("--force", action="store_true")
+    evening_mod.add_argument("--date", default=None)
+    evening_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+
     collect_mod = sub.add_parser("collect", help="晚间管线 · 第 2 步采集编排")
     collect_mod.add_argument("--slot", default="evening", choices=("evening",))
     collect_mod.add_argument("--force", action="store_true")
@@ -498,6 +515,8 @@ def main() -> None:
         raise SystemExit(cmd_news_query(args))
     if args.cmd == "quote" and args.quote_cmd == "query":
         raise SystemExit(cmd_quote_query(args))
+    if args.cmd == "evening":
+        raise SystemExit(cmd_evening(args))
     if args.cmd == "collect":
         raise SystemExit(cmd_collect(args))
     if args.cmd == "preprocess":

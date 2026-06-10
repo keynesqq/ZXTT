@@ -1,7 +1,7 @@
 # 已打包模块说明（PM 细改版）
 
 > 以 **`run.py` 现有命令** 为准；库内其它代码可 import，但无 CLI。  
-> 更新：2026-06-10（8 个基础模块）
+> 更新：2026-06-10（8 个基础模块 + 晚间报告）
 
 ---
 
@@ -17,12 +17,13 @@
 | **大盘短线生态** `ecosystem` | `python run.py ecosystem collect` | 东财三池 + 汇总 + 池子参考分（**非**最终大盘情绪） |
 | **指数快照** `index` | `python run.py index collect` | 上证/深证/创业板等涨跌与量能，独立事实源 |
 | **大盘资金流** `flow` | `python run.py flow collect` | 北向 + 大盘主力 + 行业 TOP + 自选主力（可关，默认开） |
+| **22 点晚间报告** `evening` | `python run.py evening` | 采集→预处理→AI 研判→HTML/微信「明日作战卡」（一键，自动开进度页） |
 
 技术细节（接口签名、字段表）见各子目录；本文面向**怎么用、产出什么**。
 
 **命名说明：** 产品名 **大盘短线生态**；命令 **`ecosystem collect`**（`market collect` 为兼容别名）。落盘路径暂保留 `data/market_sentiment/` 以兼容老 schema。
 
-**CLI 范围：** 上表 8 个命令即 `run.py` 全部子命令。无 `collect evening` / `collect health` / `feeds collect` / `quote snapshot` 等编排命令。
+**CLI 范围：** 上表 9 项为 `run.py` 主命令。晚间另提供分步：`collect/preprocess/generate --slot evening`。无 `collect health` / `feeds collect` / `quote snapshot` 等编排命令。
 
 **盘后建议顺序（手动）：**
 
@@ -804,57 +805,92 @@ python run.py flow collect --force --slot midday --date 2026-06-10
 
 ---
 
-## 9. 晚间管线 `evening`（规划中）
-
-> **规格已定稿**，代码与编排 CLI **待实现**。开发主文档：[`evening-dev.md`](evening-dev.md)。
+## 9. 22 点晚间报告 `evening`
 
 ### 做什么
 
-把第 2 步 7 路 raw JSON 经本地预处理（3.1–3.8）收成一份 `evening_context`，再交 AI 出 22 点「明日作战卡」（HTML + 微信简报 + 明日预期）。
+交易日 22:00「明日作战卡」：把自选 **31 只**经采集、预处理、AI 研判，输出 **HTML 详报 + 微信简报 + 明日预期 JSON**。启动时自动打开浏览器，研判页显示**计时与管线进度**。
 
-### 与八个采集模块的关系
+### 怎么做的
+
+**代码位置：**
+
+| 包 | 职责 |
+|----|------|
+| `packages/evening/` | ②–⑤ 步编排（`collect` / `preprocess` / `generate` / `render` / `run_full`） |
+| `packages/ai/` | LLM 调用、Prompt、报告解析 |
+| `packages/events/` | 规则事件卡片（③ 3.3） |
+| `packages/report/` | HTML 页面、微信 PushPlus 推送 |
+
+**管线（五步）：**
 
 ```
-quote / announcement / news query  ─┐
-ecosystem / cls / index / flow     ─┼→ 第 2 步采集
-                                    │
-                                    ▼
-                         preprocess 3.1–3.8（待实现）
-                                    │
-                                    ▼
-                    evening_context/{date}.json
-                                    │
-                                    ▼
-                         generate 第 4–5 步（待实现）
+quote query（① 内嵌于 ②）
+    → collect 7 路 raw
+    → preprocess 3.1–3.8 → evening_context
+    → AI 合成（默认 sharded：全局 + 四档并行）
+    → render HTML + 微信 + expectations
 ```
 
-- **分析按 code**（31 只）；**展示按 group**（35 行板块归属）。
-- **仅公告+资讯**走指纹增量 reuse；财联社 B 层长文、行情等每日刷新。
-- 22:00 跑 `preprocess` 前建议 **重采** `cls collect --articles`（五篇长文常 20:00 后才齐）。
+- **分析按 code**（31 只各 1 次）；**展示按 group**（35 行板块）。
+- **公告+资讯**指纹复用；财联社 B 层、行情每日刷新。
+- 墙钟约 **3～5 分钟**（资讯无大变时更快）。
 
-### 规划命令
+**库入口：**
+
+```python
+from evening import run_evening_pipeline, run_collect_evening, run_preprocess_evening, run_evening_generate
+```
+
+### 如何使用
 
 ```bash
-python run.py collect --slot evening      # 第 2 步编排（待实现）
-python run.py preprocess --slot evening   # 第 3 步 3.1–3.8（待实现）
-python run.py generate --slot evening     # 第 4–5 步（待实现）
-python run.py generate --slot evening --phase ai      # 仅 AI 研判
-python run.py generate --slot evening --phase render  # 仅 HTML/微信
+# 推荐：一键跑通（自动打开进度页，完成后变完整报告）
+python run.py evening
+python run.py evening --date 2026-06-10
+python run.py evening --no-open          # 不自动开浏览器
+
+# 分步调试
+python run.py collect --slot evening
+python run.py preprocess --slot evening
+python run.py generate --slot evening              # AI + 渲染
+python run.py generate --slot evening --phase ai   # 仅 AI
+python run.py generate --slot evening --phase render
 ```
 
-五步详文：[`evening-dev.md`](evening-dev.md) §八附录（step1–5 · config · schemas · runbook）。
+非交易日加 `--force --date YYYY-MM-DD`。
 
-### 主产出（实现后）
+**相关配置**（`config.yaml` → `evening:` / `wechat:`）：
+
+| 键 | 默认 | 含义 |
+|----|------|------|
+| `synthesize_mode` | `sharded` | AI 合成：`sharded` 拆分并行 / `monolithic` 单次 |
+| `feeds_digest_workers` | `8` | 个股 feeds digest 并发 |
+| `preprocess_cls_recollect` | `false` | preprocess 前是否重采财联社长文（② 已采则关） |
+| `wechat.enabled` | — | 微信 PushPlus 推送开关 |
+
+完整键表：[`evening-config.md`](evening-config.md)。
+
+**验收标准：**
+
+- `python run.py evening` → 浏览器打开，研判页进度条推进，约 3～5 分钟完成
+- `reports/{date}/daily_evening.html` 含三章 Tab；`missing_codes` 为空
+- 微信收到简报（`wechat.enabled: true` 且 token 已配）
+- 单测：`python -m unittest tests.test_evening_collect tests.test_evening_preprocess tests.test_evening_generate tests.test_evening_render tests.test_evening_live -v`
+
+**主产出：**
 
 | 路径 | 说明 |
 |------|------|
-| `data/evening_context/{date}.json` | 第 4/5 步读入 |
-| `data/scheduled_ai/evening_{date}.json` | 第 4 步写、第 5 步读 |
-| `data/expectations/{date}.json` | 明日预期（按 code） |
-| `reports/{date}/daily_evening.html` | 第 5 步 HTML |
-| `data/last_report.json` | 最近一次报告路径 |
-| `data/ai_digest/{date}/` | 个股 feeds + 财联社 cls digest |
-| `data/evening_baseline/{date}.json` | 公告资讯指纹基准 |
+| `data/evening_context/{date}.json` | 预处理上下文 |
+| `data/scheduled_ai/evening_{date}.json` | AI 研判结果 |
+| `data/expectations/{date}.json` | 明日预期 |
+| `reports/{date}/daily_evening.html` | 作战卡页面 |
+| `data/evening_run/{date}.json` | 运行进度（生成中） |
+| `data/ai_digest/{date}/` | feeds + cls digest |
+| `data/evening_baseline/{date}.json` | 公告资讯指纹 |
+
+开发详文：[`evening-dev.md`](evening-dev.md) · 运维：[`evening-runbook.md`](evening-runbook.md)。
 
 ---
 

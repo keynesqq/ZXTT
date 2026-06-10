@@ -1,6 +1,6 @@
 # ZXTT
 
-A 股数据采集工具集，**8 个模块**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)（以 `run.py` 现有命令为准）。
+A 股数据采集工具集，**8 个基础采集模块** + **22 点晚间报告**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)。
 
 ## 安装
 
@@ -29,7 +29,7 @@ copy config.example.yaml config.yaml
 
 ## 盘后采集（手动顺序）
 
-无 `collect evening` 编排命令，建议按序执行：
+仅采大盘事实、不生成报告时，按序执行：
 
 ```bash
 python run.py ecosystem collect
@@ -40,11 +40,17 @@ python run.py flow collect
 
 非交易日加 `--force --date YYYY-MM-DD`。
 
-## 晚间报告（规划中）
+## 22 点晚间报告
 
-22 点「明日作战卡」**开发主文档**：[`docs/evening-dev.md`](docs/evening-dev.md)（五步对齐、数据路径、实现落点）。精简总览：[`evening-pipeline.md`](docs/evening-pipeline.md)。
+一键跑通（自动打开浏览器进度页 → 完整作战卡 + 微信）：
 
-规划命令：`collect --slot evening` → `preprocess --slot evening` → `generate --slot evening`（尚未实现）。
+```bash
+python run.py evening
+python run.py evening --date 2026-06-10
+```
+
+分步调试：`collect --slot evening` → `preprocess --slot evening` → `generate --slot evening`  
+详文：[`docs/evening-dev.md`](docs/evening-dev.md) · 配置：[`docs/evening-config.md`](docs/evening-config.md)
 
 ## 测试
 

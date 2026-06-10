@@ -25,14 +25,18 @@ ZXTT config.yaml
 
 | 键 | 类型 | 默认 | 用于哪步 | 业务含义 |
 |----|------|------|----------|----------|
-| `feeds_digest_workers` | int | `4` | ③ 3.6 | 个股 feeds AI digest 并发数；上限 16 |
+| `feeds_digest_workers` | int | `8` | ③ 3.6 | 个股 feeds AI digest 并发数；上限 16 |
+| `feeds_digest_content_max` | int | `280` | ③ 3.6 | 单条 feed 送入 digest 的正文截断字数 |
 | `on_digest_fail` | str | `degrade` | ③ 3.6 | `degrade`：失败 code 标 failed，其余继续；`abort`：任一只失败终止 6B |
 | `cls_digest_workers` | int | `3` | ③ 3.8 | 财联社 B 层并发；上限 3 |
 | `cls_short_local_threshold` | int | `200` | ③ 3.8 | 单篇 `content_chars` 低于此值可走本地短摘要，不调 LLM |
 | `cls_digest_max_tokens` | int | `2500` | ③ 3.8 | 单篇 cls digest LLM max_tokens |
 | `verify_enabled` | bool | `true` | ④ 4D | 合成后可选事实校验（feeds+cls+market_local） |
 | `write_bundle_full` | bool | `false` | ③ 3.7 | 是否额外写 `evening_bundle_full.json` 审计包 |
-| `preprocess_cls_recollect` | bool | `true` | ③ 3.8 | `preprocess --slot evening` 前是否重采 `cls collect --articles` |
+| `preprocess_cls_recollect` | bool | `false` | ③ 3.8 | `preprocess` 前是否重采 `cls collect --articles`（② 已采建议关） |
+| `synthesize_mode` | str | `sharded` | ④ | `sharded` 拆分并行 / `monolithic` 单次合成 |
+| `synthesize_workers` | int | `4` | ④ | 分片并行数（上限 4） |
+| `synthesize_fallback_monolithic` | bool | `true` | ④ | 持仓/候选分片失败时回退整包合成 |
 
 ---
 
