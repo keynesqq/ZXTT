@@ -417,6 +417,34 @@ def cmd_midday(args: argparse.Namespace) -> int:
     return 0 if result.get("outcome") == "ok" else 1
 
 
+def cmd_hub(args: argparse.Namespace) -> int:
+    from report.hub import open_hub
+
+    url = open_hub(_parse_date(args.date), open_browser=not args.no_open)
+    print({"outcome": "ok", "url": url})
+    return 0
+
+
+def cmd_morning(args: argparse.Namespace) -> int:
+    phase = (args.phase or "report").strip().lower()
+    if phase == "pre":
+        from morning.run_full import run_morning_pre_pipeline
+
+        result = run_morning_pre_pipeline(on_date=_parse_date(args.date), force=args.force)
+        ok = result.get("outcome") in ("ok", "skip")
+    else:
+        from morning.run_full import run_morning_pipeline
+
+        result = run_morning_pipeline(
+            on_date=_parse_date(args.date),
+            force=args.force,
+            open_browser=not args.no_open,
+        )
+        ok = result.get("outcome") in ("ok", "skip")
+    print(result)
+    return 0 if ok else 1
+
+
 def _add_ecosystem_collect_parser(sub) -> None:
     p = sub.add_parser("collect", help="采集涨停/炸板/昨涨停三池 + pool 参考分")
     p.add_argument("--force", action="store_true", help="忽略交易日检查")
@@ -508,6 +536,16 @@ def main() -> None:
     midday_mod.add_argument("--date", default=None)
     midday_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
 
+    hub_mod = sub.add_parser("hub", help="三报告共用进度页 · 状态与计时")
+    hub_mod.add_argument("--date", default=None)
+    hub_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+
+    morning_mod = sub.add_parser("morning", help="早盘集合竞价报告 · pre=9:15采集 / 默认=报告档")
+    morning_mod.add_argument("--phase", default="report", choices=("pre", "report"))
+    morning_mod.add_argument("--force", action="store_true")
+    morning_mod.add_argument("--date", default=None)
+    morning_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+
     collect_mod = sub.add_parser("collect", help="报告管线 · 第 2 步采集编排")
     collect_mod.add_argument("--slot", default="evening", choices=("evening", "midday"))
     collect_mod.add_argument("--force", action="store_true")
@@ -551,6 +589,10 @@ def main() -> None:
         raise SystemExit(cmd_evening(args))
     if args.cmd == "midday":
         raise SystemExit(cmd_midday(args))
+    if args.cmd == "hub":
+        raise SystemExit(cmd_hub(args))
+    if args.cmd == "morning":
+        raise SystemExit(cmd_morning(args))
     if args.cmd == "collect":
         raise SystemExit(cmd_collect(args))
     if args.cmd == "preprocess":

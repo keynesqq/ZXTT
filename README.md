@@ -64,6 +64,18 @@ python run.py midday --date 2026-06-10
 分步调试：`collect --slot midday` → `preprocess --slot midday` → `generate --slot midday`  
 详文：[`docs/midday-dev.md`](docs/midday-dev.md)
 
+## 早盘集合竞价报告（约 9:25）
+
+与晚间、午间独立；9:15 并行跑 `auction` + `morning --phase pre`，9:25 出报告：
+
+```bash
+python run.py morning --phase pre
+python run.py morning
+python run.py morning --date 2026-06-10
+```
+
+详文：[`docs/morning-dev.md`](docs/morning-dev.md)
+
 ## 测试
 
 ```bash

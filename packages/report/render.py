@@ -13,6 +13,10 @@ from report.md_html import markdown_to_html, push_summary_to_html
 
 _CTX_DIR = DATA_DIR / "evening_context"
 _MIDDAY_CTX_DIR = DATA_DIR / "midday_context"
+_MORNING_CTX_DIR = DATA_DIR / "morning_context"
+_CHECKS_DIR = DATA_DIR / "morning_checks"
+_PRE_DIR = DATA_DIR / "morning_pre"
+_RUN_DIR = DATA_DIR / "morning_run"
 _AI_DIR = DATA_DIR / "scheduled_ai"
 
 
@@ -167,4 +171,38 @@ def build_midday_render_context(*, on_date: date) -> dict[str, Any]:
     }
 
 
-__all__ = ["build_evening_render_context", "build_midday_render_context"]
+def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
+    ctx = _load_json(_MORNING_CTX_DIR / f"{on_date.isoformat()}.json") or {}
+    ai = _load_json(_AI_DIR / f"morning_{on_date.isoformat()}.json") or {}
+    checks = _load_json(_CHECKS_DIR / f"{on_date.isoformat()}.json") or ctx.get("checks") or {}
+    pre = _load_json(_PRE_DIR / f"{on_date.isoformat()}.json") or ctx.get("morning_pre") or {}
+    run_st = _load_json(_RUN_DIR / f"{on_date.isoformat()}.json") or {}
+    meta = ctx.get("meta") or {}
+
+    ai_ok = bool(ai.get("body")) and not ai.get("ai_error")
+    return {
+        "trade_date": meta.get("calendar_date") or on_date.isoformat(),
+        "context_as_of": meta.get("context_as_of") or "",
+        "generated_at": now_iso(),
+        "code_count": meta.get("code_count", 0),
+        "point_count": meta.get("point_count"),
+        "ai_ok": ai_ok,
+        "ai_error": ai.get("ai_error") or "",
+        "ai_model": ai.get("model") or "",
+        "missing_codes": ai.get("missing_codes") or [],
+        "ai_summary_html": push_summary_to_html(ai.get("summary") or ""),
+        "ai_body_html": markdown_to_html(ai.get("body") or ""),
+        "ai_body_raw": ai.get("body") or "",
+        "ai_summary_raw": ai.get("summary") or "",
+        "checks": checks,
+        "morning_pre": pre,
+        "open_market": ctx.get("open_market") or {},
+        "slot": "morning",
+        "session_label": "集合竞价结束",
+        "sla_ms": run_st.get("sla_ms"),
+        "sla_ok": run_st.get("sla_ok"),
+        "ai_duration_ms": ai.get("ai_duration_ms") or run_st.get("ai_duration_ms"),
+    }
+
+
+__all__ = ["build_evening_render_context", "build_midday_render_context", "build_morning_render_context"]

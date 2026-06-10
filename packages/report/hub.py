@@ -1,0 +1,127 @@
+"""三报告共用 Web 中枢：状态聚合、落盘、打开浏览器。"""
+from __future__ import annotations
+
+import json
+import webbrowser
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+from core.context_as_of import now_iso
+from core.io import atomic_write_text
+from core.paths import DATA_DIR, ROOT
+from core.trading_calendar import today_cn
+
+_HUB_DIR = DATA_DIR / "report_hub"
+_REPORTS = ROOT / "reports"
+
+_SLOTS: tuple[tuple[str, str, str, str], ...] = (
+    ("morning", "开盘核对卡", "morning_run", "daily_morning.html"),
+    ("midday", "午间作战卡", "midday_run", "daily_midday.html"),
+    ("evening", "明日作战卡", "evening_run", "daily_evening.html"),
+)
+
+
+def _load_json(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _report_ready(day: date, filename: str) -> bool:
+    return (_REPORTS / day.isoformat() / filename).is_file()
+
+
+def _step_meta(slot_id: str) -> tuple[list[str], dict[str, str]]:
+    if slot_id == "morning":
+        return ["assemble", "ai", "render"], {
+            "assemble": "拼装核对",
+            "ai": "AI 合成",
+            "render": "页面与推送",
+        }
+    return ["collect", "preprocess", "ai", "render"], {
+        "collect": "采集",
+        "preprocess": "预处理",
+        "ai": "AI 合成",
+        "render": "页面与推送",
+    }
+
+
+def aggregate_hub(day: date) -> dict[str, Any]:
+    slots: dict[str, Any] = {}
+    for slot_id, label, run_dir, html_name in _SLOTS:
+        run_path = DATA_DIR / run_dir / f"{day.isoformat()}.json"
+        run_st = _load_json(run_path) or {}
+        report_path = f"{day.isoformat()}/{html_name}"
+        report_ready = _report_ready(day, html_name)
+        status = str(run_st.get("status") or "")
+        if not status:
+            status = "ok" if report_ready else "idle"
+        step_order, step_labels = _step_meta(slot_id)
+        slots[slot_id] = {
+            "slot": slot_id,
+            "label": label,
+            "step_order": step_order,
+            "step_labels": step_labels,
+            "status": status,
+            "progress_pct": run_st.get("progress_pct", 100 if status == "ok" else 0),
+            "detail": run_st.get("detail") or ("" if report_ready else "未运行"),
+            "current_step": run_st.get("current_step") or "",
+            "current_label": run_st.get("current_label") or label,
+            "started_at": run_st.get("started_at") or run_st.get("started_at_iso") or "",
+            "finished_at": run_st.get("finished_at") or run_st.get("finished_at_iso") or "",
+            "updated_at": run_st.get("updated_at") or "",
+            "error": run_st.get("error") or "",
+            "steps_done": run_st.get("steps_done") or [],
+            "step_durations_ms": run_st.get("step_durations_ms") or {},
+            "report_href": report_path if report_ready else "",
+            "report_ready": report_ready,
+            "sla_ok": run_st.get("sla_ok"),
+            "sla_ms": run_st.get("sla_ms"),
+            "ai_duration_ms": run_st.get("ai_duration_ms"),
+        }
+    return {
+        "schema_version": 1,
+        "trade_date": day.isoformat(),
+        "updated_at": now_iso(),
+        "slots": slots,
+    }
+
+
+def publish_hub(day: date | None = None) -> Path:
+    cal = day or today_cn()
+    payload = aggregate_hub(cal)
+    _HUB_DIR.mkdir(parents=True, exist_ok=True)
+    json_path = _HUB_DIR / f"{cal.isoformat()}.json"
+    atomic_write_text(json_path, json.dumps(payload, ensure_ascii=False, indent=2))
+
+    from report.hub_html import build_hub_page, build_hub_status_js
+
+    html = build_hub_page(payload)
+    _REPORTS.mkdir(parents=True, exist_ok=True)
+    index_path = _REPORTS / "index.html"
+    atomic_write_text(index_path, html)
+    atomic_write_text(_REPORTS / "hub_status.js", build_hub_status_js(payload))
+    return json_path
+
+
+def hub_url(day: date | None = None) -> str:
+    cal = day or today_cn()
+    index = (_REPORTS / "index.html").resolve()
+    return f"{index.as_uri()}?date={cal.isoformat()}"
+
+
+def open_hub(day: date | None = None, *, open_browser: bool = True) -> str:
+    cal = day or today_cn()
+    publish_hub(cal)
+    url = hub_url(cal)
+    if open_browser:
+        webbrowser.open(url)
+    return url
+
+
+__all__ = ["aggregate_hub", "publish_hub", "open_hub", "hub_url", "_SLOTS"]

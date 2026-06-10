@@ -79,6 +79,13 @@ news:
   akshare_timeout_sec: 45
 
 # 22 点晚间管线（详见 docs/evening-config.md）
+morning:
+  sla_sec: 120
+  llm_timeout_sec: 110
+  wait_auction_max_sec: 15
+  llm_max_tokens: 4000
+  on_ai_fail: error
+
 midday:
   feeds_digest_workers: 8
   feeds_digest_content_max: 280
@@ -114,3 +121,4 @@ wechat:
   webhook_url: ""
   title_prefix: "ZXTT 盘后"
   midday_title_prefix: "ZXTT 午间"
+  morning_title_prefix: "ZXTT 开盘"

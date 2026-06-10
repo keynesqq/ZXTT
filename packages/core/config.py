@@ -204,6 +204,20 @@ def midday_cfg() -> dict:
     return _merge_section_dict(fallback, local)
 
 
+def morning_cfg() -> dict:
+    fallback: dict = {
+        "sla_sec": 120,
+        "llm_timeout_sec": 110,
+        "wait_auction_max_sec": 15,
+        "llm_max_tokens": 4000,
+        "on_ai_fail": "error",
+    }
+    local = load_config().get("morning") or {}
+    if not local:
+        return fallback
+    return _merge_section_dict(fallback, local)
+
+
 def evening_cfg() -> dict:
     fallback: dict = {
         "feeds_digest_workers": 8,

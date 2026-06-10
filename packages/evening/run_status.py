@@ -77,12 +77,15 @@ def publish_status(day: date, status: dict[str, Any]) -> None:
     status["seq"] = int(status.get("seq") or 0) + 1
     write_status(status, day)
     write_run_status_js(day, status)
+    from report.hub import publish_hub
+
+    publish_hub(day)
 
 
 def open_report_browser(day: date) -> None:
-    path = _report_path(day)
-    if path.is_file():
-        webbrowser.open(path.resolve().as_uri())
+    from report.hub import open_hub
+
+    open_hub(day, open_browser=True)
 
 
 def begin_run(day: date, *, open_browser: bool = True) -> dict[str, Any]:
@@ -102,7 +105,9 @@ def begin_run(day: date, *, open_browser: bool = True) -> dict[str, Any]:
         "seq": 0,
     }
     write_status(status, day)
-    refresh_live_html(day, status)
+    from report.hub import publish_hub
+
+    publish_hub(day)
     if open_browser:
         open_report_browser(day)
     return status

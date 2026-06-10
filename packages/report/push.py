@@ -91,6 +91,8 @@ def push_wechat_summary(summary: str, *, trade_date: str, slot: str = "evening")
     cfg = _wechat_cfg()
     if slot == "midday":
         title_prefix = str(cfg.get("midday_title_prefix") or "ZXTT 午间")
+    elif slot == "morning":
+        title_prefix = str(cfg.get("morning_title_prefix") or "ZXTT 开盘")
     else:
         title_prefix = str(cfg.get("title_prefix") or "ZXTT 盘后")
     token = os.getenv("WECHAT_PUSH_TOKEN", "").strip()
