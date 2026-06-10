@@ -1,5 +1,5 @@
 @echo off
-cd /d D:\ZXTT
+cd /d "%~dp0.."
 if exist .venv\Scripts\python.exe (
   .venv\Scripts\python.exe run.py auction
 ) else (

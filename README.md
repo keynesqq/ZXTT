@@ -1,19 +1,16 @@
 # ZXTT
 
-从 [ZXModular](D:\ZXModular) 迁出的**已打包 8 模块**工具集。老仓 `ZXModular` 已归档，日常开发在本项目。
-
-模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)。
+A 股数据采集工具集，**8 个模块**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)（以 `run.py` 现有命令为准）。
 
 ## 安装
 
 ```bash
-cd D:\ZXTT
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 copy config.example.yaml config.yaml
 ```
 
-`config.yaml` 可只配 `legacy.zxreport_config: D:\ZXReport\config.yaml`，只读复用老项目同花顺路径与自选板块。
+`config.yaml` 可只配 `legacy.zxreport_config` 指向老项目 `ZXReport/config.yaml`，只读复用同花顺路径与自选板块。
 
 ## 八个命令
 
@@ -28,10 +25,25 @@ copy config.example.yaml config.yaml
 | 指数快照 | `python run.py index collect` |
 | 大盘资金流 | `python run.py flow collect` |
 
+`market collect` 为 `ecosystem collect` 的兼容别名。`market collect --articles` 已废弃，请改用 `cls collect --articles`。
+
+## 盘后采集（手动顺序）
+
+无 `collect evening` 编排命令，建议按序执行：
+
+```bash
+python run.py ecosystem collect
+python run.py cls collect --articles
+python run.py index collect
+python run.py flow collect
+```
+
+非交易日加 `--force --date YYYY-MM-DD`。
+
 ## 测试
 
 ```bash
-python -m unittest tests.test_market tests.test_market_index tests.test_market_flow tests.test_auction tests.test_quote_query tests.test_quote_query_cache tests.test_announcement_query tests.test_news_query tests.test_query_cache -v
+python -m unittest discover -s tests -v
 ```
 
 ## 产出目录

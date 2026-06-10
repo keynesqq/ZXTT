@@ -1,7 +1,7 @@
 # 已打包模块说明（PM 细改版）
 
-> 记录经产品需求细改、验收通过的独立模块。  
-> 更新：2026-06-10（§8 大盘资金流 P1 **已打包验收**；共 8 个基础模块）
+> 以 **`run.py` 现有命令** 为准；库内其它代码可 import，但无 CLI。  
+> 更新：2026-06-10（8 个基础模块）
 
 ---
 
@@ -21,6 +21,19 @@
 技术细节（接口签名、字段表）见各子目录；本文面向**怎么用、产出什么**。
 
 **命名说明：** 产品名 **大盘短线生态**；命令 **`ecosystem collect`**（`market collect` 为兼容别名）。落盘路径暂保留 `data/market_sentiment/` 以兼容老 schema。
+
+**CLI 范围：** 上表 8 个命令即 `run.py` 全部子命令。无 `collect evening` / `collect health` / `feeds collect` / `quote snapshot` 等编排命令。
+
+**盘后建议顺序（手动）：**
+
+```bash
+python run.py ecosystem collect
+python run.py cls collect --articles
+python run.py index collect
+python run.py flow collect
+```
+
+非交易日各命令加 `--force --date YYYY-MM-DD`。
 
 ---
 
@@ -89,15 +102,11 @@ python run.py cls collect --articles --force --date 2026-06-09
 | `cls_articles_after` | B 层最早采集时刻 | `"20:00"` |
 | `cls_articles_use_ai` | AI 辅助匹配 | `false` |
 
-健康检查「五篇是否找齐」读 **`health.cls_articles_required`**（默认 `5`），不在 `market` 段。
-
 **验收标准：**
 
 - 终端 `articles_found: 5`、`articles_ok: true`
 - 打开 `data/cls_articles/{date}.json`，五篇均有 `content` 字段
 - 全流程约数秒（非分钟级）
-
-**延伸阅读：** [`docs/cls-articles-collection.md`](cls-articles-collection.md)
 
 ---
 
@@ -124,7 +133,7 @@ python run.py cls collect --articles --force --date 2026-06-09
 
 查前对同花顺自选 **按 code 去重** 拉行情；终端含 `code_count`、`row_count`、`groups`（板块名顺序与 config 一致）、`path`。
 
-**不做的事：** 不替代午间/盘后 `quote snapshot` 全自选落盘（那是报告流程内部用）。
+**不做的事：** 不写 `data/snapshot_{date}.json`（库内 `packages/quote/snapshot/` 供 query 构建字段，无独立 CLI）。
 
 ### 怎么做的
 
@@ -180,7 +189,7 @@ python run.py quote query --all
 - 打开 `data/quote_query_{date}.json`：`schema_version: 2`；`quotes` 与 `memberships`/`structure` 条数分别等于 `code_count`/`row_count`
 - **已验（2026-06-10）**：31 只 / 35 行板块；`load_joined_quote_rows()` join 后 35 行
 
-**注意：** `quote query` 与 `quote snapshot` 不同；后者写 `data/snapshot_{date}.json`，供午间/盘后报告。
+**注意：** `quote query` 落盘 `data/quote_query_{date}.json`（schema v2）；与库内 `write_snapshot_cache()`（`data/snapshot_{date}.json`）不是同一路径，后者当前无 CLI。
 
 ---
 
@@ -199,7 +208,7 @@ python run.py quote query --all
 
 **不做的事：**
 
-- 不写 `feeds_cache`、不参与 `feeds collect` 批量采集
+- 不写 `feeds_cache`、不调用 `feeds/collect.py` 批量函数
 - 不查研报、资讯、观点、行业资讯
 
 ### 怎么做的
@@ -210,7 +219,7 @@ python run.py quote query --all
 |------|------|
 | `announcement/query.py` | 对外 `query_announcements()` |
 | `announcement/query_cache.py` | 落盘 `announcement_query_{日}.json` |
-| `feeds/announcements.py` | 巨潮 + AkShare 拉取（与 `feeds collect` 共用） |
+| `feeds/announcements.py` | 巨潮 + AkShare 拉取（query 与库批量函数共用） |
 | `feeds.cninfo` / `feeds.eastmoney` | 数据源 HTTP / AkShare |
 
 **查询流程：**
@@ -219,7 +228,7 @@ python run.py quote query --all
 2. **2 只及以上并行**拉取（worker 数读 `feeds.max_workers`，默认 4）。
 3. 调用 `fetch_announcement_rows`：巨潮 → AkShare（时间范围内）。
 4. **默认不兜底**历史最新条；范围内无公告则空列表 + 提示「近 N 日内无公告」。
-5. 传 `--latest N` 才启用历史最新 N 条兜底（与 `feeds collect` 批量行为一致）。
+5. 传 `--latest N` 才启用历史最新 N 条兜底（与 `feeds/collect.py` 批量函数行为一致）。
 
 ### 如何使用
 
@@ -252,7 +261,7 @@ python run.py announcement query --codes 000021,000066,... --days 7
 | 键 | 含义 | 建议 |
 |----|------|------|
 | `lookback_days` | 默认回溯天数 | `3` |
-| `fallback_latest_count` | 仅 `feeds collect` 批量采集用；**query 不传 `--latest` 时不读** | `3` |
+| `fallback_latest_count` | 仅 `feeds/collect.py` 批量函数用；**query 不传 `--latest` 时不读** | `3` |
 | `max_count` | 默认最多条数（0=不限） | `0` |
 | `fallback` | 巨潮失败时是否用 AkShare | `akshare` |
 
@@ -390,7 +399,7 @@ auction:
 |------|------|
 | `news/query.py` | 对外 `query_news()`，多股并行 |
 | `news/query_cache.py` | 落盘 `news_query_{日}.json` |
-| `feeds/non_announcement.py` | 四类采集共用（`feeds collect` 也复用） |
+| `feeds/non_announcement.py` | 四类采集共用（news query 与库批量函数复用） |
 | `feeds/eastmoney.py` | 东财 AkShare 主源 |
 | `feeds/ths_f10.py` | 同花顺 F10 兜底（`on_empty` 时） |
 
@@ -475,7 +484,7 @@ python run.py news query --codes 600519 --no-industry
 | **三池事实** | 今日涨停、今日炸板、昨日涨停今日表现（溢价） |
 | **结构汇总** | 家数、均涨幅、炸板修复、最高连板、2 板+、行业 TOP、连板龙头 |
 | **池子参考分** | `pool_score` / `pool_signal` / `pool_hint` — 仅 AkShare 三池规则，**非**最终情绪 |
-| **下游索引** | `limit_up_index` — 供 `quote snapshot` 补连板 |
+| **下游索引** | `limit_up_index` — 供下游报告/库代码补连板字段 |
 
 **不做的事：**
 
@@ -514,9 +523,9 @@ market_sentiment/{日}.json     cls_finance/{日}.json
 | 2 | 汇总家数、溢价、修复率、连板高度、行业集中度 |
 | 3 | `_score_pool` 仅读三池 → 写入 `pool_score` / `pool_signal` / `pool_hint`（双写 `emotion_*` 兼容旧读盘） |
 | 4 | 写 manifest 源 `akshare_zt_pool`；三池皆空 → `ok=false` |
-| 5 | **不调用** `collect_cls_finance` / 五篇采集；盘后由 `collect evening` 分步调用 `cls collect --articles` |
+| 5 | **不调用** cls 模块；五篇长文请单独 `python run.py cls collect --articles` |
 
-**打包状态：** 已验收（2026-06-10）。边界与 cls 拆分；`collect evening` / health 已对齐。
+**打包状态：** 已验收（2026-06-10）。与 cls 代码目录分离，JSON 互不嵌套。
 
 ### 如何使用
 
@@ -556,16 +565,7 @@ python run.py market collect --force --date 2026-06-09
 - 终端 `outcome: ok`，含 `limit_up_count`、`pool_signal`
 - JSON **无** `cls` 块；含 `pool_score` / `pool_hint`
 - manifest → `sources.akshare_zt_pool.ok` 为 true（三池非全空）
-- `collect health` → `market_pools` 为 ok/warn
-- **已验（2026-06-10）**：`ecosystem collect --force --date 2026-06-09` → 涨停 **130**、炸板 **24**、`pool_signal` **中**（71 分）；JSON 无 `cls`；单测 23 条 OK
-
-### 印证扩展（后续采集模块）
-
-| 优先级 | 模块方向 | 状态 |
-|--------|----------|------|
-| P0 | 指数快照 | **已打包** → §7 `index collect` |
-| P1 | 资金流 | **已打包** → §8 `flow collect` |
-| P1 | 竞价扩面 | 指数/龙头竞价缺口（现有 `auction` 为自选列表） |
+- **已验（2026-06-10）**：`ecosystem collect --force --date 2026-06-09` → 涨停 **130**、炸板 **24**、`pool_signal` **中**（71 分）；JSON 无 `cls`；单测 14 条 OK
 
 ---
 
@@ -739,7 +739,7 @@ market_index/         market_flow/
 | 5 | 写 manifest 源 `akshare_hsgt` / `akshare_market_flow` / `akshare_sector_flow` / `akshare_watchlist_flow` |
 | 6 | `--slot` 合并 `snapshots[]` → `data/market_flow/{trade_date}.json` |
 
-**打包状态：** 已验收（2026-06-10）。v1 **未**接入 `collect evening` 编排。
+**打包状态：** 已验收（2026-06-10）。
 
 ### 如何使用
 
@@ -802,8 +802,6 @@ python run.py flow collect --force --slot midday --date 2026-06-10
 - manifest 四源（L4 关时为 skip）
 - **已验（2026-06-10）**：北向 **0** 亿（盘中政策正常）；大盘主力 **+446.8** 亿（push2his）；自选 **31/31** 有 `main_net_yi`；单测 **14** 条 OK
 
-**延伸阅读：** [`docs/flow-module-plan.md`](flow-module-plan.md)
-
 ---
 
 ## 八个模块的关系
@@ -825,26 +823,27 @@ python run.py flow collect --force --slot midday --date 2026-06-10
     │              │              │              │
     └──────┬───────┴──────────────┴──────────────┘
            ▼
-    【解读层 · 非采集】大盘情绪 = 相互印证 + 总结
-           │
-           └── quote snapshot / feeds collect（全自选落盘，编排层）
+    【解读层 · 非本仓库 CLI】大盘情绪 = 多源印证 + 总结
 ```
 
 - **ecosystem**：结构事实 + 池子参考分，与个股列表无关。  
 - **cls**：媒体侧热度、风口、五篇长文。  
 - **index**：指数涨跌事实，防「指数红、情绪弱」。  
 - **flow**：北向/主力/行业/自选资金事实，与指数、生态对照。  
-- **auction / quote / announcement / news**：个股维度；`quote query` 为分层落盘，报告 join 用 `load_joined_quote_rows()`；不参与大盘 JSON 嵌套。
+- **auction / quote / announcement / news**：个股维度；`quote query` 为分层落盘，join 用 `load_joined_quote_rows()`；不参与大盘 JSON 嵌套。
 
 ---
 
-## 未列入本文的模块
+## 库代码（无 CLI）
 
-以下有命令、能跑，但**未按本轮 PM 需求细改打包**：
+以下在 `packages/` 内可被 import 或供 query 复用，**`run.py` 无对应命令**：
 
-- `feeds collect` — 个股文字素材（含公告批量采集）  
-- `quote snapshot` — 全自选行情落盘（报告用）  
-- `collect morning/midday/evening` — 场景编排运维  
+| 路径 | 说明 |
+|------|------|
+| `feeds/collect.py` | 全自选文字素材批量采集（`collect_all_feeds`）；`FeedItem` 被 news query 引用 |
+| `quote/snapshot/cache.py` | `write_snapshot_cache()` → `data/snapshot_{date}.json`；`structure_from_stocks()` 被 quote query 使用 |
+| `core/config.py` | `health_cfg()` / `probe_cfg()` 预留，当前无 health CLI |
+| `market/sentiment.py` | `collect_open_market_context()` 预留，当前无 CLI |
 
 ---
 
@@ -864,5 +863,5 @@ python run.py auction --force --codes 600519,000001
 python run.py index collect --force --date 2026-06-09
 python run.py flow collect --force --date 2026-06-10
 python run.py flow collect --force --no-watchlist --date 2026-06-10
-python -m unittest tests.test_market tests.test_market_index tests.test_market_flow tests.test_collect_scenes tests.test_collect_health_cls tests.test_auction tests.test_quote_query tests.test_quote_query_cache tests.test_announcement_query tests.test_news_query tests.test_query_cache -v
+python -m unittest discover -s tests -v
 ```

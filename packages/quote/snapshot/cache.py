@@ -1,4 +1,4 @@
-"""快照 JSON 落盘与加载（ZXModular 路径：data/snapshot_{date}.json）。"""
+"""快照 JSON 落盘与加载（data/snapshot_{date}.json；无 run.py CLI，query 仅用 structure_from_stocks）。"""
 from __future__ import annotations
 
 import json
