@@ -1,10 +1,10 @@
-"""第 4 步 4B · 单体/分片 AI 合成。"""
+"""第 4 步 4B · 午间 AI 合成（参数化）。"""
 from __future__ import annotations
 
 from datetime import date
 from typing import Any
 
-from ai.prompts import EVENING_GLOBAL_SYSTEM, EVENING_SHARD_SYSTEM, EVENING_SYSTEM
+from ai.prompts import MIDDAY_GLOBAL_SYSTEM, MIDDAY_SHARD_SYSTEM, MIDDAY_SYSTEM
 from ai.report_synthesis import (
     evaluate_raw,
     merge_sharded,
@@ -12,11 +12,11 @@ from ai.report_synthesis import (
     run_monolithic_synthesize as _run_mono,
     run_sharded_synthesize as _run_sharded,
 )
-from core.config import evening_cfg, load_config
-from evening.prompt_build import (
-    build_evening_global_prompt,
-    build_evening_shard_prompt,
-    build_evening_user_prompt,
+from core.config import load_config, midday_cfg
+from midday.prompt_build import (
+    build_midday_global_prompt,
+    build_midday_shard_prompt,
+    build_midday_user_prompt,
 )
 
 
@@ -27,7 +27,7 @@ def _group_max_tokens() -> int:
 
 def _touch_ai_progress(ctx: dict[str, Any], detail: str, progress_pct: int) -> None:
     try:
-        from evening.run_status import touch_progress
+        from midday.run_status import touch_progress
 
         td = (ctx.get("meta") or {}).get("trade_date") or ""
         if td:
@@ -40,7 +40,7 @@ def run_monolithic_synthesize(ctx: dict[str, Any], user_prompt: str) -> dict[str
     return _run_mono(
         ctx,
         user_prompt,
-        system=EVENING_SYSTEM,
+        system=MIDDAY_SYSTEM,
         group_max_tokens=_group_max_tokens(),
     )
 
@@ -48,11 +48,11 @@ def run_monolithic_synthesize(ctx: dict[str, Any], user_prompt: str) -> dict[str
 def run_sharded_synthesize(ctx: dict[str, Any]) -> dict[str, Any]:
     return _run_sharded(
         ctx,
-        systems=(EVENING_SYSTEM, EVENING_GLOBAL_SYSTEM, EVENING_SHARD_SYSTEM),
-        build_global_prompt=build_evening_global_prompt,
-        build_shard_prompt=build_evening_shard_prompt,
-        build_user_prompt=build_evening_user_prompt,
-        cfg=evening_cfg(),
+        systems=(MIDDAY_SYSTEM, MIDDAY_GLOBAL_SYSTEM, MIDDAY_SHARD_SYSTEM),
+        build_global_prompt=build_midday_global_prompt,
+        build_shard_prompt=build_midday_shard_prompt,
+        build_user_prompt=build_midday_user_prompt,
+        cfg=midday_cfg(),
         group_max_tokens=_group_max_tokens(),
         touch_progress=_touch_ai_progress,
     )

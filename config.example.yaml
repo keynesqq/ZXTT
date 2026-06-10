@@ -79,6 +79,16 @@ news:
   akshare_timeout_sec: 45
 
 # 22 点晚间管线（详见 docs/evening-config.md）
+midday:
+  feeds_digest_workers: 8
+  feeds_digest_content_max: 280
+  on_digest_fail: degrade
+  verify_enabled: true
+  preprocess_cls_recollect: false
+  synthesize_mode: sharded
+  synthesize_workers: 4
+  synthesize_fallback_monolithic: true
+
 evening:
   feeds_digest_workers: 8
   feeds_digest_content_max: 280
@@ -103,3 +113,4 @@ wechat:
   # PushPlus 令牌（与老项目 .env 中 WECHAT_PUSH_TOKEN 相同）
   webhook_url: ""
   title_prefix: "ZXTT 盘后"
+  midday_title_prefix: "ZXTT 午间"

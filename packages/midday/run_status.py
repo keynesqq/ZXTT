@@ -1,4 +1,4 @@
-"""晚间管线运行状态 · 供 live 页面轮询刷新。"""
+"""午间管线运行状态 · 供 live 页面轮询刷新。"""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ from typing import Any
 from core.context_as_of import now_iso
 from core.io import atomic_write_text
 from core.paths import DATA_DIR, ROOT
-_STATUS_DIR = DATA_DIR / "evening_run"
+_STATUS_DIR = DATA_DIR / "midday_run"
 _REPORTS = ROOT / "reports"
 
 _STEPS: list[tuple[str, str, int]] = [
@@ -26,7 +26,7 @@ def _status_path(day: date) -> Path:
 
 
 def _report_path(day: date) -> Path:
-    return _REPORTS / day.isoformat() / "daily_evening.html"
+    return _REPORTS / day.isoformat() / "daily_midday.html"
 
 
 def load_status(day: date) -> dict[str, Any] | None:
@@ -53,7 +53,7 @@ def _report_dir(day: date) -> Path:
 
 
 def write_run_status_js(day: date, status: dict[str, Any]) -> Path:
-    from report.evening_live import build_run_status_js
+    from report.midday_live import build_run_status_js
 
     path = _report_dir(day) / "run_status.js"
     atomic_write_text(path, build_run_status_js(status))
@@ -61,11 +61,11 @@ def write_run_status_js(day: date, status: dict[str, Any]) -> Path:
 
 
 def refresh_live_html(day: date, status: dict[str, Any]) -> Path:
-    from report.evening_live import build_evening_live_page
+    from report.midday_live import build_midday_live_page
 
     out_dir = _report_dir(day)
-    path = out_dir / "daily_evening.html"
-    page = build_evening_live_page(status)
+    path = out_dir / "daily_midday.html"
+    page = build_midday_live_page(status)
     atomic_write_text(path, page)
     atomic_write_text(out_dir / "index.html", page)
     write_run_status_js(day, status)
@@ -88,6 +88,8 @@ def open_report_browser(day: date) -> None:
 def begin_run(day: date, *, open_browser: bool = True) -> dict[str, Any]:
     status: dict[str, Any] = {
         "schema_version": 1,
+        "slot": "midday",
+        "session_label": "午间休市",
         "trade_date": day.isoformat(),
         "status": "running",
         "started_at": now_iso(),

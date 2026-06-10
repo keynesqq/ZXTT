@@ -85,11 +85,14 @@ def _push_webhook(summary: str, *, trade_date: str, url: str, title_prefix: str)
         return {"outcome": "fail", "message": str(e), "channel": "webhook"}
 
 
-def push_wechat_summary(summary: str, *, trade_date: str) -> dict[str, Any]:
+def push_wechat_summary(summary: str, *, trade_date: str, slot: str = "evening") -> dict[str, Any]:
     if not _push_enabled():
         return {"outcome": "skip", "reason": "wechat_disabled"}
     cfg = _wechat_cfg()
-    title_prefix = str(cfg.get("title_prefix") or "ZXTT 盘后")
+    if slot == "midday":
+        title_prefix = str(cfg.get("midday_title_prefix") or "ZXTT 午间")
+    else:
+        title_prefix = str(cfg.get("title_prefix") or "ZXTT 盘后")
     token = os.getenv("WECHAT_PUSH_TOKEN", "").strip()
     if token:
         return _push_pushplus(summary, trade_date=trade_date, title_prefix=title_prefix)

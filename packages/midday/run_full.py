@@ -1,4 +1,4 @@
-"""晚间管线一键编排：采集 → 预处理 → AI → 渲染。"""
+"""午间管线一键编排：采集 → 预处理 → AI → 渲染。"""
 from __future__ import annotations
 
 import time
@@ -6,13 +6,13 @@ from datetime import date
 from typing import Any
 
 from core.trading_calendar import is_trading_day
-from evening.collect import run_collect_evening
-from evening.pipeline import run_evening_generate
-from evening.preprocess import run_preprocess_evening
-from evening.run_status import begin_run, fail_run, finish_run, step_begin, step_done
+from midday.collect import run_collect_midday
+from midday.pipeline import run_midday_generate
+from midday.preprocess import run_preprocess_midday
+from midday.run_status import begin_run, fail_run, finish_run, step_begin, step_done
 
 
-def run_evening_pipeline(
+def run_midday_pipeline(
     *,
     on_date: date | None = None,
     force: bool = False,
@@ -27,7 +27,7 @@ def run_evening_pipeline(
     # ② collect
     step_begin(cal, "collect", detail="采集行情、资讯、大盘与财联社…")
     t0 = time.monotonic()
-    coll = run_collect_evening(on_date=cal, force=force)
+    coll = run_collect_midday(on_date=cal, force=force)
     coll_ms = int((time.monotonic() - t0) * 1000)
     if coll.get("overall") == "fail":
         fail_run(cal, "collect", str(coll.get("reason") or "collect_failed"))
@@ -42,7 +42,7 @@ def run_evening_pipeline(
     # ③ preprocess
     step_begin(cal, "preprocess", detail="预处理：标签、事件、feeds digest…")
     t0 = time.monotonic()
-    prep = run_preprocess_evening(on_date=cal, force=force)
+    prep = run_preprocess_midday(on_date=cal, force=force)
     prep_ms = int((time.monotonic() - t0) * 1000)
     if prep.get("outcome") != "ok":
         fail_run(cal, "preprocess", str(prep.get("message") or prep.get("reason") or "preprocess_failed"))
@@ -59,7 +59,7 @@ def run_evening_pipeline(
     # ④ AI
     step_begin(cal, "ai", detail="AI 研判合成（拆分模式）…")
     t0 = time.monotonic()
-    gen_ai = run_evening_generate(on_date=cal, phase="ai", force=force)
+    gen_ai = run_midday_generate(on_date=cal, phase="ai", force=force)
     ai_ms = int((time.monotonic() - t0) * 1000)
     ai = gen_ai.get("phases", {}).get("ai") or gen_ai
     if gen_ai.get("outcome") == "fail" or ai.get("outcome") == "fail":
@@ -75,7 +75,7 @@ def run_evening_pipeline(
     # ⑤ render
     step_begin(cal, "render", detail="生成 HTML 页面与微信推送…")
     t0 = time.monotonic()
-    gen_render = run_evening_generate(on_date=cal, phase="render", force=force)
+    gen_render = run_midday_generate(on_date=cal, phase="render", force=force)
     render_ms = int((time.monotonic() - t0) * 1000)
     render = gen_render.get("phases", {}).get("render") or gen_render
     if gen_render.get("outcome") == "fail" or render.get("outcome") == "fail":
@@ -97,4 +97,4 @@ def run_evening_pipeline(
     }
 
 
-__all__ = ["run_evening_pipeline"]
+__all__ = ["run_midday_pipeline"]

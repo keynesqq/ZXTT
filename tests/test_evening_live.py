@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "packages"))
 
-from report.evening_live import build_evening_live_page
+from report.evening_live import build_evening_live_page, build_run_status_js
 
 
 class TestEveningLive(unittest.TestCase):
@@ -25,10 +25,12 @@ class TestEveningLive(unittest.TestCase):
                 "steps_done": ["collect", "preprocess"],
             }
         )
-        self.assertIn("run-bar-fill", html)
-        self.assertIn("RUN_STATUS", html)
-        self.assertIn("分片完成", html)
-        self.assertIn("② 采集行情与资讯", html)
+        self.assertIn("applyRunStatus", html)
+        self.assertIn("pollViaFetch", html)
+        self.assertIn("run-steps", html)
+        self.assertIn("switchToReport", html)
+        js = build_run_status_js({"status": "running", "progress_pct": 55, "seq": 1})
+        self.assertIn("applyRunStatus", js)
 
 
 if __name__ == "__main__":

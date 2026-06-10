@@ -1,7 +1,7 @@
 # 已打包模块说明（PM 细改版）
 
 > 以 **`run.py` 现有命令** 为准；库内其它代码可 import，但无 CLI。  
-> 更新：2026-06-10（8 个基础模块 + 晚间报告）
+> 更新：2026-06-10（8 个基础模块 + 午间报告 + 晚间报告）
 
 ---
 
@@ -18,12 +18,13 @@
 | **指数快照** `index` | `python run.py index collect` | 上证/深证/创业板等涨跌与量能，独立事实源 |
 | **大盘资金流** `flow` | `python run.py flow collect` | 北向 + 大盘主力 + 行业 TOP + 自选主力（可关，默认开） |
 | **22 点晚间报告** `evening` | `python run.py evening` | 采集→预处理→AI 研判→HTML/微信「明日作战卡」（一键，自动开进度页） |
+| **午间报告** `midday` | `python run.py midday` | 午间作战卡：上午复盘 + 下午午盘；与晚间独立，不采财联社 B 层 |
 
 技术细节（接口签名、字段表）见各子目录；本文面向**怎么用、产出什么**。
 
 **命名说明：** 产品名 **大盘短线生态**；命令 **`ecosystem collect`**（`market collect` 为兼容别名）。落盘路径暂保留 `data/market_sentiment/` 以兼容老 schema。
 
-**CLI 范围：** 上表 9 项为 `run.py` 主命令。晚间另提供分步：`collect/preprocess/generate --slot evening`。无 `collect health` / `feeds collect` / `quote snapshot` 等编排命令。
+**CLI 范围：** 上表 10 项为 `run.py` 主命令。午间 / 晚间另提供分步：`collect/preprocess/generate --slot midday|evening`。无 `collect health` / `feeds collect` / `quote snapshot` 等编排命令。
 
 **盘后建议顺序（手动）：**
 
@@ -891,6 +892,88 @@ python run.py generate --slot evening --phase render
 | `data/evening_baseline/{date}.json` | 公告资讯指纹 |
 
 开发详文：[`evening-dev.md`](evening-dev.md) · 运维：[`evening-runbook.md`](evening-runbook.md)。
+
+---
+
+## 10. 午间报告 `midday`
+
+### 做什么
+
+交易日午间休市（约 12:50）「**午间作战卡**」：基于**上午盘**行情与**今晨～午间**素材，复盘上午、服务**下午午盘** → HTML + 微信 + 午后预期。与 §9 晚间**完全独立**；**不采财联社 B 层五篇**；不做 11:35 快照。
+
+**代码位置：**
+
+| 目录 | 职责 |
+|----|------|
+| `packages/midday/` | ②–⑤ 步编排（与 `evening/` 镜像，互不 import） |
+| `packages/report/midday_html.py` | 午间作战卡页面 |
+| `packages/report/midday_live.py` | 生成中进度页 |
+| `packages/ai/prompts.py` | `MIDDAY_*` 三套 Prompt |
+| `packages/ai/report_synthesis.py` | 参数化 AI 合成（午间 / 晚间共用） |
+
+**管线（五步）：**
+
+```
+quote query（① 内嵌于 ②）
+    → collect 6 路 raw（index/flow slot=midday，无 cls_articles）
+    → preprocess 3.1–3.7 → midday_context
+    → AI 合成（默认 sharded）
+    → render HTML + 微信 + 午后预期
+```
+
+**库入口：**
+
+```python
+from midday import run_midday_pipeline, run_collect_midday, run_preprocess_midday, run_midday_generate
+```
+
+### 如何使用
+
+```bash
+# 推荐：一键跑通（自动打开进度页，完成后变完整报告）
+python run.py midday
+python run.py midday --date 2026-06-10
+python run.py midday --no-open          # 不自动开浏览器
+
+# 分步调试
+python run.py collect --slot midday
+python run.py preprocess --slot midday
+python run.py generate --slot midday
+python run.py generate --slot midday --phase ai
+python run.py generate --slot midday --phase render
+```
+
+非交易日加 `--force --date YYYY-MM-DD`。
+
+**相关配置**（`config.yaml` → `midday:` / `wechat:`）：
+
+| 键 | 默认 | 含义 |
+|----|------|------|
+| `synthesize_mode` | `sharded` | AI 合成模式 |
+| `feeds_digest_workers` | `8` | 个股 feeds digest 并发 |
+| `preprocess_cls_recollect` | `false` | 固定关闭（无 B 层） |
+| `wechat.midday_title_prefix` | `ZXTT 午间` | 微信标题前缀（晚间 `title_prefix` 不变） |
+
+**验收标准：**
+
+- `python run.py midday` → 浏览器打开，标题 **午间作战卡**
+- 无 `cls_articles` 采集；health 无「财联社长文 x/5」
+- `data/scheduled_ai/midday_{date}.json` 且 `slot=midday`
+- 单测：`python -m unittest tests.test_midday_collect tests.test_midday_preprocess tests.test_midday_generate tests.test_midday_render tests.test_midday_live -v`
+
+**主产出：**
+
+| 路径 | 说明 |
+|------|------|
+| `data/midday_context/{date}.json` | 预处理上下文 |
+| `data/scheduled_ai/midday_{date}.json` | AI 研判结果 |
+| `data/expectations/{date}_midday.json` | 午后预期 |
+| `reports/{date}/daily_midday.html` | 午间作战卡 |
+| `data/midday_run/{date}.json` | 运行进度 |
+| `data/collect_manifest/{date}_midday.json` | 采集清单 |
+| `data/midday_baseline/{date}.json` | 公告资讯指纹 |
+
+开发详文：[`midday-dev.md`](midday-dev.md)
 
 ---
 

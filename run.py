@@ -339,29 +339,39 @@ def cmd_flow_collect(args: argparse.Namespace) -> int:
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
-    from evening.collect import run_collect_evening
-
     slot = (args.slot or "evening").strip().lower()
-    if slot != "evening":
+    if slot == "midday":
+        from midday.collect import run_collect_midday
+
+        result = run_collect_midday(on_date=_parse_date(args.date), force=args.force)
+    elif slot == "evening":
+        from evening.collect import run_collect_evening
+
+        result = run_collect_evening(on_date=_parse_date(args.date), force=args.force)
+    else:
         print({"outcome": "error", "reason": "unsupported_slot", "slot": slot})
         return 1
-    result = run_collect_evening(on_date=_parse_date(args.date), force=args.force)
     print(result)
     return 0 if result.get("overall") != "fail" else 1
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
-    from evening.pipeline import run_evening_generate
-
     slot = (args.slot or "evening").strip().lower()
-    if slot != "evening":
-        print({"outcome": "error", "reason": "unsupported_slot", "slot": slot})
-        return 1
     phase = (args.phase or "all").strip().lower()
     if phase not in ("all", "ai", "render"):
         print({"outcome": "error", "reason": "unsupported_phase", "phase": phase})
         return 1
-    result = run_evening_generate(on_date=_parse_date(args.date), phase=phase, force=args.force)
+    if slot == "midday":
+        from midday.pipeline import run_midday_generate
+
+        result = run_midday_generate(on_date=_parse_date(args.date), phase=phase, force=args.force)
+    elif slot == "evening":
+        from evening.pipeline import run_evening_generate
+
+        result = run_evening_generate(on_date=_parse_date(args.date), phase=phase, force=args.force)
+    else:
+        print({"outcome": "error", "reason": "unsupported_slot", "slot": slot})
+        return 1
     print(result)
     return 0 if result.get("outcome") != "fail" else 1
 
@@ -379,15 +389,32 @@ def cmd_evening(args: argparse.Namespace) -> int:
 
 
 def cmd_preprocess(args: argparse.Namespace) -> int:
-    from evening.preprocess import run_preprocess_evening
-
     slot = (args.slot or "evening").strip().lower()
-    if slot != "evening":
+    if slot == "midday":
+        from midday.preprocess import run_preprocess_midday
+
+        result = run_preprocess_midday(on_date=_parse_date(args.date), force=args.force)
+    elif slot == "evening":
+        from evening.preprocess import run_preprocess_evening
+
+        result = run_preprocess_evening(on_date=_parse_date(args.date), force=args.force)
+    else:
         print({"outcome": "error", "reason": "unsupported_slot", "slot": slot})
         return 1
-    result = run_preprocess_evening(on_date=_parse_date(args.date), force=args.force)
     print(result)
     return 0 if result.get("outcome") != "fail" else 1
+
+
+def cmd_midday(args: argparse.Namespace) -> int:
+    from midday.run_full import run_midday_pipeline
+
+    result = run_midday_pipeline(
+        on_date=_parse_date(args.date),
+        force=args.force,
+        open_browser=not args.no_open,
+    )
+    print(result)
+    return 0 if result.get("outcome") == "ok" else 1
 
 
 def _add_ecosystem_collect_parser(sub) -> None:
@@ -476,18 +503,23 @@ def main() -> None:
     evening_mod.add_argument("--date", default=None)
     evening_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
 
-    collect_mod = sub.add_parser("collect", help="晚间管线 · 第 2 步采集编排")
-    collect_mod.add_argument("--slot", default="evening", choices=("evening",))
+    midday_mod = sub.add_parser("midday", help="午间管线 · 一键跑通并打开进度页")
+    midday_mod.add_argument("--force", action="store_true")
+    midday_mod.add_argument("--date", default=None)
+    midday_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+
+    collect_mod = sub.add_parser("collect", help="报告管线 · 第 2 步采集编排")
+    collect_mod.add_argument("--slot", default="evening", choices=("evening", "midday"))
     collect_mod.add_argument("--force", action="store_true")
     collect_mod.add_argument("--date", default=None)
 
-    preprocess_mod = sub.add_parser("preprocess", help="晚间管线 · 第 3 步本地预处理")
-    preprocess_mod.add_argument("--slot", default="evening", choices=("evening",))
+    preprocess_mod = sub.add_parser("preprocess", help="报告管线 · 第 3 步本地预处理")
+    preprocess_mod.add_argument("--slot", default="evening", choices=("evening", "midday"))
     preprocess_mod.add_argument("--force", action="store_true")
     preprocess_mod.add_argument("--date", default=None)
 
-    generate_mod = sub.add_parser("generate", help="晚间管线 · 第 4/5 步 AI+报告")
-    generate_mod.add_argument("--slot", default="evening", choices=("evening",))
+    generate_mod = sub.add_parser("generate", help="报告管线 · 第 4/5 步 AI+报告")
+    generate_mod.add_argument("--slot", default="evening", choices=("evening", "midday"))
     generate_mod.add_argument("--phase", default="all", choices=("all", "ai", "render"))
     generate_mod.add_argument("--force", action="store_true")
     generate_mod.add_argument("--date", default=None)
@@ -517,6 +549,8 @@ def main() -> None:
         raise SystemExit(cmd_quote_query(args))
     if args.cmd == "evening":
         raise SystemExit(cmd_evening(args))
+    if args.cmd == "midday":
+        raise SystemExit(cmd_midday(args))
     if args.cmd == "collect":
         raise SystemExit(cmd_collect(args))
     if args.cmd == "preprocess":

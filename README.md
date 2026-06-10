@@ -1,6 +1,6 @@
 # ZXTT
 
-A 股数据采集工具集，**8 个基础采集模块** + **22 点晚间报告**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)。
+A 股数据采集工具集，**8 个基础采集模块** + **午间 / 晚间报告**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)。
 
 ## 安装
 
@@ -51,6 +51,18 @@ python run.py evening --date 2026-06-10
 
 分步调试：`collect --slot evening` → `preprocess --slot evening` → `generate --slot evening`  
 详文：[`docs/evening-dev.md`](docs/evening-dev.md) · 配置：[`docs/evening-config.md`](docs/evening-config.md)
+
+## 午间报告（约 12:50）
+
+与晚间完全独立；一键跑通（自动打开进度页 → 午间作战卡 + 微信）：
+
+```bash
+python run.py midday
+python run.py midday --date 2026-06-10
+```
+
+分步调试：`collect --slot midday` → `preprocess --slot midday` → `generate --slot midday`  
+详文：[`docs/midday-dev.md`](docs/midday-dev.md)
 
 ## 测试
 

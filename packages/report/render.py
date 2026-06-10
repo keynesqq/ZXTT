@@ -12,6 +12,7 @@ from quote.query_cache import join_quotes_with_memberships, load_quote_query_cac
 from report.md_html import markdown_to_html, push_summary_to_html
 
 _CTX_DIR = DATA_DIR / "evening_context"
+_MIDDAY_CTX_DIR = DATA_DIR / "midday_context"
 _AI_DIR = DATA_DIR / "scheduled_ai"
 
 
@@ -104,4 +105,66 @@ def build_evening_render_context(*, on_date: date) -> dict[str, Any]:
     }
 
 
-__all__ = ["build_evening_render_context"]
+def build_midday_render_context(*, on_date: date) -> dict[str, Any]:
+    ctx = _load_json(_MIDDAY_CTX_DIR / f"{on_date.isoformat()}.json") or {}
+    ai = _load_json(_AI_DIR / f"midday_{on_date.isoformat()}.json") or {}
+    meta = ctx.get("meta") or {}
+    health = ctx.get("health") or {}
+    quote_data = load_quote_query_cache(on_date=on_date) or {}
+    quotes = quote_data.get("quotes") or []
+    memberships = ctx.get("memberships") or quote_data.get("memberships") or []
+    joined = join_quotes_with_memberships(quotes, memberships)
+
+    by_code = ctx.get("by_code") or {}
+    snapshot_rows = []
+    for row in joined:
+        code = str(row.get("code") or "")
+        lb = (by_code.get(code) or {}).get("local_block") or {}
+        flow = lb.get("flow") or {}
+        snapshot_rows.append(
+            {
+                **row,
+                "tags": lb.get("tags") or [],
+                "events_label": lb.get("events_label") or "",
+                "stance_label": lb.get("stance_label") or "",
+                "primary_stance": lb.get("primary_stance") or "",
+                "main_net_yi": flow.get("main_net_yi"),
+                "stock_href": f"#stock-{code}",
+            }
+        )
+
+    ai_ok = bool(ai.get("body")) and not ai.get("ai_error")
+    exp_path = f"data/expectations/{on_date.isoformat()}_midday.json"
+
+    return {
+        "trade_date": meta.get("trade_date") or on_date.isoformat(),
+        "context_as_of": meta.get("context_as_of") or "",
+        "generated_at": now_iso(),
+        "code_count": meta.get("code_count", 0),
+        "row_count": meta.get("row_count", 0),
+        "health_brief": health.get("health_brief", ""),
+        "trust_flags": health.get("trust_flags") or {},
+        "ai_ok": ai_ok,
+        "ai_error": ai.get("ai_error") or "",
+        "ai_model": ai.get("model") or "",
+        "missing_codes": ai.get("missing_codes") or [],
+        "truncated_suspected": ai.get("truncated_suspected", False),
+        "critical_missing": ai.get("critical_missing", False),
+        "ai_summary_html": push_summary_to_html(ai.get("summary") or ""),
+        "ai_body_html": markdown_to_html(ai.get("body") or ""),
+        "ai_body_raw": ai.get("body") or "",
+        "ai_summary_raw": ai.get("summary") or "",
+        "group_order": ctx.get("group_order") or [],
+        "snapshot_rows": snapshot_rows,
+        "events_by_code": ctx.get("events_by_code") or {},
+        "critical_events": _critical_events(ctx.get("events_by_code") or {}, by_code),
+        "market_local": ctx.get("market_local") or {},
+        "feeds_digest_by_code": ctx.get("feeds_digest_by_code") or {},
+        "by_code": by_code,
+        "expectations_path": exp_path,
+        "slot": "midday",
+        "session_label": "午间休市",
+    }
+
+
+__all__ = ["build_evening_render_context", "build_midday_render_context"]

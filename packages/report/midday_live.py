@@ -1,14 +1,14 @@
-"""晚间报告生成中 · 实时进度页。"""
+"""午间报告生成中 · 实时进度页。"""
 from __future__ import annotations
 
 import html
 import json
 from typing import Any
 
-from report.evening_html import EVENING_CSS
+from report.midday_html import MIDDAY_CSS
 
 _LIVE_JS = """
-window.__EVENING_LIVE__ = true;
+window.__MIDDAY_LIVE__ = true;
 let __runLastSeq = 0;
 let __runPollPending = false;
 
@@ -52,7 +52,7 @@ function renderSteps(st) {
 }
 
 function switchToReport() {
-  if (!window.__EVENING_LIVE__ || window.__runReloaded) return;
+  if (!window.__MIDDAY_LIVE__ || window.__runReloaded) return;
   window.__runReloaded = true;
   if (window.__runPollTimer) clearInterval(window.__runPollTimer);
   const base = location.pathname.split("?")[0];
@@ -103,7 +103,7 @@ function tick() {
 
 function statusJsonUrl() {
   const td = (window.RUN_STATUS && window.RUN_STATUS.trade_date) || document.body.dataset.tradeDate;
-  return td ? `../../data/evening_run/${td}.json` : "";
+  return td ? `../../data/midday_run/${td}.json` : "";
 }
 
 function pollViaFetch() {
@@ -151,7 +151,7 @@ def build_run_status_js(status: dict[str, Any]) -> str:
     return f"window.__RUN_STATUS__={payload};if(window.applyRunStatus)window.applyRunStatus(window.__RUN_STATUS__);"
 
 
-def build_evening_live_page(status: dict[str, Any]) -> str:
+def build_midday_live_page(status: dict[str, Any]) -> str:
     trade_date = html.escape(str(status.get("trade_date", "")))
     pct = int(status.get("progress_pct") or 0)
     detail = html.escape(str(status.get("detail") or ""))
@@ -164,9 +164,9 @@ def build_evening_live_page(status: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZXTT 明日作战卡 · 生成中 · {trade_date}</title>
+<title>ZXTT 午间作战卡 · 生成中 · {trade_date}</title>
 <style>
-{EVENING_CSS}
+{MIDDAY_CSS}
 .run-card {{
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 22px 24px; margin-bottom: 20px;
@@ -207,7 +207,7 @@ def build_evening_live_page(status: dict[str, Any]) -> str:
 <body data-trade-date="{trade_date}">
 <div class="wrap">
 <header class="hero">
-<h1>明日作战卡</h1>
+<h1>午间作战卡</h1>
 <p class="sub">交易日 {trade_date} · <span id="run-state">{label}</span></p>
 <div class="chips">
 <span class="chip accent">生成中</span>
@@ -238,4 +238,4 @@ def build_evening_live_page(status: dict[str, Any]) -> str:
 </html>"""
 
 
-__all__ = ["build_evening_live_page", "build_run_status_js"]
+__all__ = ["build_midday_live_page", "build_run_status_js"]

@@ -186,6 +186,24 @@ def ths_cfg() -> dict:
     return {**ext_ths, **local} if ext_ths else local
 
 
+def midday_cfg() -> dict:
+    fallback: dict = {
+        "feeds_digest_workers": 8,
+        "feeds_digest_content_max": 280,
+        "on_digest_fail": "degrade",
+        "verify_enabled": True,
+        "write_bundle_full": False,
+        "preprocess_cls_recollect": False,
+        "synthesize_mode": "sharded",
+        "synthesize_workers": 4,
+        "synthesize_fallback_monolithic": True,
+    }
+    local = load_config().get("midday") or {}
+    if not local:
+        return fallback
+    return _merge_section_dict(fallback, local)
+
+
 def evening_cfg() -> dict:
     fallback: dict = {
         "feeds_digest_workers": 8,
