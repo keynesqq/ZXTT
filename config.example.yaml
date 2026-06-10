@@ -1,0 +1,79 @@
+legacy:
+  zxreport_config: D:\ZXReport\config.yaml
+ths:
+  account_dir: D:\同花顺软件\同花顺\mo_XXXXXXX
+  analyze_blocks:
+    by_name:
+    - 我的
+    - 想买的
+quote:
+  primary: ths
+  secondary: tencent
+  verify: true
+  verify_tolerance:
+    price_pct: 0.005
+    pct_chg: 0.05
+auction:
+  interval_sec: 30
+  watch_start: "09:15:05"
+  watch_end: "09:25:05"
+  codes:
+  - "600519"
+  - "000001"
+  tier_groups:
+  - 我的
+  - 想买的
+index:
+  enabled: true
+  symbols:
+    - sh000001
+    - sz399001
+    - sz399006
+    - sh000905
+flow:
+  enabled: true
+  primary: eastmoney_direct
+  fallback: eastmoney_akshare
+  watchlist_enabled: true
+  sector_top_n: 10
+  sector_max_pages: 3
+  stock_rank_max_pages: 80
+  request_interval_sec: 1.0
+  stock_batch_size: 50
+  watchlist_missing_warn: true
+market:
+  enabled: true
+  index_enabled: true
+  cls_enabled: true
+  cls_wind: true
+  cls_mainline: true
+  cls_articles_enabled: true
+  cls_articles_evening_only: true
+  cls_articles_after: "20:00"
+  cls_articles_use_ai: false
+feeds:
+  announcement:
+    fallback: akshare
+    lookback_days: 3
+    fallback_latest_count: 3
+    max_count: 0
+  research:
+    lookback_days: 7
+  news:
+    lookback_days: 7
+  industry_news:
+    lookback_days: 7
+  ths_f10:
+    enabled: true
+    trigger: on_empty
+  max_workers: 4
+  akshare_timeout_sec: 45
+news:
+  lookback_days: 3
+  max_count: 0
+  industry_enabled: true
+  ths_f10:
+    enabled: true
+    trigger: on_empty
+  max_workers: 8
+  akshare_timeout_sec: 45
