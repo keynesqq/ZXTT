@@ -42,9 +42,12 @@ a:hover { text-decoration: underline; }
   margin: 0 -20px 24px;
   padding-left: 20px; padding-right: 20px;
 }
-.hero-title {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin: 0 0 8px; font-size: 1.65rem; font-weight: 700; letter-spacing: .02em;
+.hero-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  margin: 0 0 4px;
+}
+.hero-name {
+  margin: 0; font-size: 1.65rem; font-weight: 700; letter-spacing: .02em;
 }
 .summary-trigger {
   padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(79,140,255,.4);
@@ -52,7 +55,6 @@ a:hover { text-decoration: underline; }
   cursor: pointer; line-height: 1.4; letter-spacing: .04em;
 }
 .summary-trigger:hover { background: rgba(79,140,255,.28); color: #fff; }
-.hero .sub { color: var(--muted); font-size: .92rem; margin: 0 0 14px; }
 
 .modal { display: none; position: fixed; inset: 0; z-index: 100; }
 .modal.open {
@@ -79,7 +81,7 @@ a:hover { text-decoration: underline; }
 .modal-close:hover { color: var(--text); background: var(--surface-3); }
 .modal-body { padding: 16px 20px 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip {
+.hero-head .chip {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 12px; border-radius: 999px; font-size: .8rem;
   background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
@@ -314,25 +316,38 @@ def _badge_html(label: str, unverified: bool = False) -> str:
     return out
 
 
-def _chips_html(rc: dict[str, Any]) -> str:
-    chips = [
-        f'<span class="chip accent">{rc.get("code_count", 0)} 只分析</span>',
-        f'<span class="chip accent">{rc.get("row_count", 0)} 行板块</span>',
-        f'<span class="chip {"ok" if rc.get("cls_complete") else "warn"}">财联社 {html.escape(str(rc.get("cls_articles_found", "")))}</span>',
-    ]
+def _chip_time_label(context_as_of: str) -> str:
+    s = str(context_as_of or "").strip()
+    if " " in s:
+        return s.split(" ", 1)[1]
+    return s
+
+
+def _hero_meta_chips_html(rc: dict[str, Any]) -> str:
+    trade_date = html.escape(str(rc.get("trade_date") or ""))
+    session = f'<span class="chip accent">上午复盘 · 午后策略 · 交易日 {trade_date}</span>'
+    time_bit = _chip_time_label(str(rc.get("context_as_of") or ""))
     if rc.get("ai_ok"):
-        chips.append('<span class="chip ok">AI 已生成</span>')
+        ai_label = f"AI 已生成{time_bit}" if time_bit else "AI 已生成"
+        ai = f'<span class="chip ok">{html.escape(ai_label)}</span>'
     else:
-        chips.append('<span class="chip err">AI 未就绪</span>')
-    if rc.get("ai_model"):
-        chips.append(f'<span class="chip">{html.escape(str(rc["ai_model"]))}</span>')
-    return "".join(chips)
+        ai_label = f"AI 未就绪{time_bit}" if time_bit else "AI 未就绪"
+        ai = f'<span class="chip err">{html.escape(ai_label)}</span>'
+    return session + ai
+
+
+def _hero_head_html(rc: dict[str, Any]) -> str:
+    return (
+        f'<div class="hero-head">'
+        f'<h1 class="hero-name">午间作战卡</h1>'
+        f"{_summary_trigger_html(rc)}"
+        f"{_hero_meta_chips_html(rc)}"
+        f"</div>"
+    )
 
 
 def _alerts_html(rc: dict[str, Any]) -> str:
     parts = []
-    if rc.get("health_brief"):
-        parts.append(f'<div class="health-bar">{html.escape(str(rc["health_brief"]))}</div>')
     if rc.get("missing_codes"):
         parts.append(f'<div class="alert alert-warn">漏股 {len(rc["missing_codes"])} 只：{html.escape(", ".join(rc["missing_codes"]))}</div>')
     if rc.get("truncated_suspected"):
@@ -545,7 +560,6 @@ document.querySelectorAll('#prose-tabs button').forEach(btn => {
 
 def build_midday_page(rc: dict[str, Any]) -> str:
     trade_date = html.escape(str(rc.get("trade_date", "")))
-    ctx_as_of = html.escape(str(rc.get("context_as_of", "")))
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -557,9 +571,7 @@ def build_midday_page(rc: dict[str, Any]) -> str:
 <body>
 <div class="wrap">
 <header class="hero">
-<h1 class="hero-title">午间作战卡{_summary_trigger_html(rc)}</h1>
-<p class="sub">上午复盘 · 午后策略 · 分析时刻 {ctx_as_of} · 交易日 {trade_date}</p>
-<div class="chips">{_chips_html(rc)}</div>
+{_hero_head_html(rc)}
 {_alerts_html(rc)}
 </header>
 {_market_env_top_html(rc)}
