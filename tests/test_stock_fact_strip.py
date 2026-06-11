@@ -25,12 +25,15 @@ class StockFactStripTest(unittest.TestCase):
                 "pct_5d": -1.2,
                 "main_net_yi": 1.23,
                 "tags": ["放量", "趋势"],
+                "stance_label": "持仓",
             }
         )
         self.assertIn("今+2.35%", html_out)
         self.assertIn("5日-1.20%", html_out)
         self.assertIn("主力+1.23亿", html_out)
         self.assertIn("放量", html_out)
+        self.assertIn("stance-pill", html_out)
+        self.assertIn("持仓", html_out)
 
     def test_inject_after_h3(self) -> None:
         prose = (

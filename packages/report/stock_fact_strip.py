@@ -23,6 +23,13 @@ _EVENT_BADGE = {
     "轻多": "badge-bull",
 }
 
+_STANCE_CLASS = {
+    "持仓": "stance-holding",
+    "候选": "stance-candidate",
+    "观察": "stance-watch",
+    "其它": "stance-other",
+}
+
 
 def snapshot_rows_by_code(rows: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
@@ -51,6 +58,12 @@ def _main_net_span(val: Any) -> str:
         return '<span class="fact fact-muted">主力—</span>'
 
 
+def _stance_pill(label: str) -> str:
+    text = str(label or "").strip() or "—"
+    cls = _STANCE_CLASS.get(text, "stance-other")
+    return f'<span class="stance-pill {cls}">{html.escape(text)}</span>'
+
+
 def _event_badge(label: str, *, unverified: bool = False) -> str:
     base = str(label or "").split("·")[0]
     cls = _EVENT_BADGE.get(base, "badge-bear")
@@ -64,7 +77,7 @@ def stock_fact_strip_html(row: dict[str, Any] | None) -> str:
     if not row:
         return (
             '<span class="stock-fact-inline stock-fact-inline-missing">'
-            '<span class="fact fact-muted">今— · 5日— · 主力— · 标签—</span></span>'
+            '<span class="fact fact-muted">今— · 5日— · 主力— · 标签— · 镜头—</span></span>'
         )
     tags_html = "".join(
         f'<span class="tag-pill">{html.escape(str(t))}</span>' for t in (row.get("tags") or [])[:5]
@@ -76,6 +89,7 @@ def stock_fact_strip_html(row: dict[str, Any] | None) -> str:
         _pct_span(row.get("pct_5d"), label="5日"),
         _main_net_span(row.get("main_net_yi")),
         f'<span class="fact-tags">{tags_html}</span>',
+        _stance_pill(str(row.get("stance_label") or "")),
     ]
     return f'<span class="stock-fact-inline">{"".join(parts)}</span>'
 

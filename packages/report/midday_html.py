@@ -484,7 +484,7 @@ def _analysis_panel(rc: dict[str, Any]) -> str:
     else:
         msg = rc.get("ai_error") or "AI 未生成，请运行 generate --phase ai"
         ai_block = f'<div class="card alert-err">{html.escape(msg)}</div>'
-    return ai_block + _events_block_html(rc) + _market_accordion(rc) + _cls_appendix(rc)
+    return ai_block + _market_accordion(rc) + _cls_appendix(rc)
 
 
 MIDDAY_JS = """
