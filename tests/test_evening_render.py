@@ -22,8 +22,12 @@ class TestEveningRender(unittest.TestCase):
         path = Path(result["path"])
         self.assertTrue(path.is_file())
         text = path.read_text(encoding="utf-8")
-        self.assertIn("31 只分析", text)
-        self.assertIn("panel-snapshot", text)
+        self.assertIn("明日作战卡", text)
+        self.assertIn("env-strip", text)
+        self.assertNotIn("panel-snapshot", text)
+        self.assertNotIn("预消化资料", text)
+        self.assertIn("高度关注", text)
+        self.assertNotIn('data-prose-group="观察"', text)
 
 
 if __name__ == "__main__":

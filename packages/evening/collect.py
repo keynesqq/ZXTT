@@ -226,21 +226,21 @@ def run_collect_evening(
     sources: dict[str, Any] = {}
     warnings: list[str] = []
 
-    # 1 quote
+    # 1 quote — 晚间须拉收盘行情，不能沿用午间已落盘的 quote_query
     quote_path = quote_query_cache_path(cal)
     quote_fetched = False
     quote_error: str | None = None
-    if not quote_path.is_file():
-        if skip_network:
+    if skip_network:
+        if not quote_path.is_file():
             quote_error = "quote_query_missing"
-        else:
-            try:
-                _, path, meta = query_quotes(all_watchlist=True, on_date=cal)
-                quote_fetched = path is not None and int(meta.get("code_count") or 0) > 0
-                if not quote_fetched:
-                    quote_error = "quote_fetch_empty"
-            except Exception as e:
-                quote_error = str(e)
+    else:
+        try:
+            _, path, meta = query_quotes(all_watchlist=True, on_date=cal)
+            quote_fetched = path is not None and int(meta.get("code_count") or 0) > 0
+            if not quote_fetched:
+                quote_error = "quote_fetch_empty"
+        except Exception as e:
+            quote_error = str(e)
     sources["quote_query"] = _quote_status(cal, fetched=quote_fetched, error=quote_error)
     if sources["quote_query"]["status"] == "fail":
         payload = {

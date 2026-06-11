@@ -2,10 +2,15 @@
 from __future__ import annotations
 
 import html
-import json
+import re
 from typing import Any
 
-from report.md_html import markdown_sections_to_html, markdown_to_html, push_summary_to_html
+from report.md_html import markdown_to_html, push_summary_to_html
+from report.stock_fact_strip import (
+    inject_stock_events_footer,
+    inject_stock_fact_strips,
+    snapshot_rows_by_code,
+)
 
 EVENING_CSS = """
 :root {
@@ -38,9 +43,50 @@ a:hover { text-decoration: underline; }
   margin: 0 -20px 24px;
   padding-left: 20px; padding-right: 20px;
 }
-.hero h1 { margin: 0 0 8px; font-size: 1.65rem; font-weight: 700; letter-spacing: .02em; }
-.hero .sub { color: var(--muted); font-size: .92rem; margin: 0 0 14px; }
+.hero-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  margin: 0 0 4px;
+}
+.hero-name {
+  margin: 0; font-size: 1.65rem; font-weight: 700; letter-spacing: .02em;
+}
+.summary-trigger {
+  padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(79,140,255,.4);
+  background: var(--accent-dim); color: #a8c7ff; font-size: .78rem; font-weight: 600;
+  cursor: pointer; line-height: 1.4; letter-spacing: .04em;
+}
+.summary-trigger:hover { background: rgba(79,140,255,.28); color: #fff; }
+
+.modal { display: none; position: fixed; inset: 0; z-index: 100; }
+.modal.open {
+  display: flex; align-items: center; justify-content: center; padding: 20px 16px;
+}
+.modal-backdrop {
+  position: absolute; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(2px);
+}
+.modal-panel {
+  position: relative; flex: 0 1 720px; width: 100%; max-height: min(88vh, 820px);
+  margin: 0; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); display: flex; flex-direction: column;
+}
+.modal-head {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 700;
+}
+.modal-head-sub { font-size: .78rem; font-weight: 400; color: var(--muted); margin-left: 8px; }
+.modal-close {
+  border: none; background: var(--surface-2); color: var(--muted); font-size: 1.25rem;
+  line-height: 1; cursor: pointer; padding: 4px 10px; border-radius: 8px;
+}
+.modal-close:hover { color: var(--text); background: var(--surface-3); }
+.modal-body { padding: 16px 20px 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.hero-head .chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px; font-size: .8rem;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+}
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 12px; border-radius: 999px; font-size: .8rem;
@@ -60,20 +106,9 @@ a:hover { text-decoration: underline; }
 .alert-err { background: rgba(240,82,82,.1); border: 1px solid rgba(240,82,82,.3); color: #ffb4b4; }
 
 .tab-nav {
-  display: flex; gap: 6px; padding: 6px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); margin-bottom: 20px; position: sticky; top: 0; z-index: 10;
+  display: none;
 }
-.tab-nav button {
-  flex: 1; padding: 10px 16px; border: none; border-radius: 8px;
-  background: transparent; color: var(--muted); font-size: .95rem; font-weight: 600;
-  cursor: pointer; transition: .15s;
-}
-.tab-nav button:hover { color: var(--text); background: var(--surface-2); }
-.tab-nav button.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(79,140,255,.35); }
-.panel { display: none; animation: fadeIn .2s ease; }
-.panel.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.panel { display: block; }
 
 .card {
   background: var(--surface); border: 1px solid var(--border);
@@ -85,157 +120,292 @@ a:hover { text-decoration: underline; }
   color: var(--muted); margin-bottom: 10px; font-weight: 600;
 }
 
-.push-summary { display: flex; flex-direction: column; gap: 10px; }
-.push-row { display: grid; grid-template-columns: 88px 1fr; gap: 10px; align-items: start; font-size: .9rem; }
-.push-label { color: var(--accent); font-weight: 700; white-space: nowrap; }
-.push-body { color: var(--text); line-height: 1.55; }
-.push-body strong { color: #fff; }
+.push-summary { display: flex; flex-direction: column; gap: 12px; }
+.push-section {
+  padding: 12px 14px; border-radius: 10px; background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.push-section-global { border-left: 3px solid var(--accent); }
+.push-section-portfolio { border-left: 3px solid rgba(62,207,142,.75); }
+.push-section-watch { border-left: 3px solid rgba(245,166,35,.65); }
+.push-section-head { margin-bottom: 8px; }
+.push-section-label {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: .75rem; font-weight: 800; letter-spacing: .04em;
+  background: var(--surface-3); color: #a8c7ff;
+}
+.push-section-global .push-section-label { background: var(--accent-dim); color: #a8c7ff; }
+.push-section-portfolio .push-section-label { background: rgba(62,207,142,.15); color: #9ee8c0; }
+.push-section-watch .push-section-label { background: rgba(245,166,35,.12); color: #ffd08a; }
+.push-section-body { font-size: .9rem; line-height: 1.65; color: #d4deee; }
+.push-section-body strong { color: #fff; }
+.push-stock-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.push-stock-item {
+  padding: 10px 12px; border-radius: 8px; background: rgba(12,17,24,.45);
+  border: 1px solid rgba(42,56,79,.8); font-size: .88rem; line-height: 1.6;
+}
+.push-code {
+  display: inline-block; min-width: 4.5em; margin-right: 8px;
+  font-family: ui-monospace, monospace; font-weight: 700; color: var(--accent);
+}
+.push-stock-text { color: #c8d4e6; }
+.push-stock-text strong { color: #eef3fb; }
+.push-meta {
+  margin: 4px 0 0; padding-top: 12px; border-top: 1px dashed var(--border);
+  font-size: .78rem; color: var(--muted); text-align: right;
+}
+.push-lead { margin: 0 0 4px; font-size: .88rem; color: var(--muted); }
 
 .prose { font-size: .94rem; }
 .prose h2.section-heading {
   margin: 28px 0 12px; padding-bottom: 8px; font-size: 1.15rem;
   border-bottom: 1px solid var(--border); color: #c5d4ea;
 }
-.prose h3.stock-heading {
-  margin: 22px 0 10px; padding: 10px 14px; border-radius: 8px;
+.prose h3.stock-heading,
+.prose summary.stock-heading {
+  margin: 22px 0 0; padding: 10px 14px; border-radius: 8px;
   background: var(--surface-2); border-left: 3px solid var(--accent); font-size: 1rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
 }
-.prose h3 .code { font-family: ui-monospace, monospace; color: var(--accent); margin-right: 6px; }
-.prose p { margin: 8px 0; color: #c8d4e6; }
+details.stock-block { margin-bottom: 16px; }
+details.stock-block > summary.stock-heading {
+  list-style: none; cursor: pointer; user-select: none;
+  border-radius: 8px; transition: background .15s;
+}
+details.stock-block > summary.stock-heading::-webkit-details-marker { display: none; }
+details.stock-block > summary.stock-heading::after {
+  content: "展开 ▸"; margin-left: auto; font-size: .72rem; font-weight: 600;
+  color: var(--muted); white-space: nowrap; flex-shrink: 0;
+}
+details.stock-block[open] > summary.stock-heading::after { content: "收起 ▾"; }
+details.stock-block > summary.stock-heading:hover { background: var(--surface-3); }
+details.stock-block[open] > summary.stock-heading {
+  border-radius: 8px 8px 0 0; margin-bottom: 0;
+}
+.prose h3 .code,
+.prose summary .code { font-family: ui-monospace, monospace; color: var(--accent); margin-right: 6px; }
+.stock-fact-inline {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  font-size: .78rem; font-weight: 400; color: var(--muted);
+}
+.stock-fact-inline::before {
+  content: "·"; color: var(--border); font-weight: 700; margin: 0 2px;
+}
+.stock-fact-inline .fact-price { color: #e8eef6; font-weight: 600; }
+.stock-fact-inline .fact-pct.up { color: var(--up); font-weight: 600; }
+.stock-fact-inline .fact-pct.down { color: var(--down); font-weight: 600; }
+.stock-fact-inline .fact-muted { color: var(--muted); }
+.stock-fact-inline .fact-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.stock-body {
+  margin: 0 0 0 4px; padding: 12px 14px 14px 16px;
+  border-left: 2px solid var(--border); background: rgba(28,39,56,.45);
+  border-radius: 0 0 8px 8px;
+}
+.prose-list {
+  margin: 0 0 12px; padding-left: 1.25em; list-style: disc;
+}
+.prose-list .prose-list { margin: 8px 0 4px; list-style: circle; }
+.prose-list > li {
+  margin: 10px 0; padding-left: 4px; color: #c8d4e6; line-height: 1.65;
+}
+.prose-list > li::marker { color: var(--muted); }
+.prose-list li strong { color: #e8eef6; }
+.stock-events-foot {
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border);
+  font-size: .82rem; line-height: 1.55;
+}
+.stock-events-label {
+  display: inline-block; margin-right: 8px; padding: 2px 8px; border-radius: 4px;
+  background: var(--surface-3); color: var(--muted); font-weight: 600; font-size: .75rem;
+  vertical-align: top;
+}
+.stock-events-text { color: #c8d4e6; }
+.stock-events-text.stock-events-muted { color: var(--muted); }
+.stock-event-item { margin: 4px 0 6px; color: #c8d4e6; }
+.stock-event-item .event-date { color: var(--muted); font-size: .78rem; }
+.prose p { margin: 8px 0; color: #c8d4e6; line-height: 1.65; }
+.prose hr.prose-hr { border: none; border-top: 1px dashed var(--border); margin: 16px 0; }
 .prose strong { color: #fff; }
 
-.badge {
-  display: inline-block; padding: 2px 8px; border-radius: 6px;
-  font-size: .75rem; font-weight: 700; margin-right: 6px;
+.prose-panel { display: none; animation: fadeIn .2s ease; }
+.prose-panel.active { display: block; }
+.analysis-card { margin-bottom: 16px; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.env-strip {
+  margin-bottom: 20px; padding: 16px 18px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
 }
-.badge-critical-bear { background: rgba(240,82,82,.2); color: #ff8a8a; }
-.badge-critical-bull { background: rgba(62,207,142,.2); color: #7ee8b0; }
-.badge-bear { background: rgba(240,82,82,.12); color: #f0a0a0; }
-.badge-bull { background: rgba(62,207,142,.12); color: #90ddb8; }
-.badge-unverified { background: rgba(245,166,35,.15); color: #ffd08a; font-size: .7rem; margin-left: 4px; }
-
-.event-card {
-  padding: 12px 14px; border-radius: 10px; background: var(--surface-2);
-  border: 1px solid var(--border); margin-bottom: 10px;
+.env-strip-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  font-size: .75rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
 }
-.event-card .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
-.event-card .code-name { font-weight: 700; }
-.event-card .groups { font-size: .8rem; color: var(--muted); }
-.event-item { font-size: .88rem; margin: 4px 0; padding-left: 4px; }
-
-details.accordion { margin-bottom: 12px; }
-details.accordion summary {
-  cursor: pointer; padding: 12px 16px; border-radius: var(--radius);
-  background: var(--surface-2); border: 1px solid var(--border); font-weight: 600;
-  list-style: none;
+.env-slot {
+  padding: 2px 8px; border-radius: 999px; font-size: .72rem; font-weight: 600;
+  background: var(--accent-dim); border: 1px solid rgba(79,140,255,.3); color: #a8c7ff;
+  text-transform: none; letter-spacing: 0;
 }
-details.accordion summary::-webkit-details-marker { display: none; }
-details.accordion[open] summary { border-radius: var(--radius) var(--radius) 0 0; border-bottom: none; }
-details.accordion .inner { padding: 14px 16px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius) var(--radius); background: var(--surface); }
-
-.cls-grid { display: grid; gap: 10px; }
-.cls-item { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); font-size: .88rem; }
-.cls-item .slot { font-weight: 700; color: var(--accent); margin-bottom: 4px; }
-
+.env-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+.env-row:last-child { margin-bottom: 0; }
+.env-label {
+  flex: 0 0 26px; font-size: .78rem; font-weight: 800; color: var(--accent);
+  line-height: 1.65; padding-top: 2px;
+}
+.env-segments { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.env-seg {
+  padding: 4px 10px; border-radius: 8px; font-size: .84rem; line-height: 1.45;
+  background: var(--surface-2); border: 1px solid var(--border); color: #c8d4e6;
+}
+.env-seg.warn { border-color: rgba(245,166,35,.35); background: rgba(245,166,35,.08); color: #ffd08a; }
+.env-seg.up { border-color: rgba(240,82,82,.3); color: #ffb4b4; }
+.env-seg.down { border-color: rgba(62,207,142,.3); color: #9ee8c0; }
+.footer-note { margin-top: 32px; text-align: center; font-size: .78rem; color: var(--muted); }
+.tag-pill {
+  display: inline-block; margin: 2px 4px 2px 0; padding: 2px 7px;
+  border-radius: 4px; background: var(--surface-3); font-size: .75rem; color: var(--muted);
+}
 .group-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .group-tabs button {
   padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface-2); color: var(--muted); cursor: pointer; font-size: .85rem;
 }
 .group-tabs button.active { background: var(--accent-dim); border-color: var(--accent); color: #a8c7ff; }
-.group-panel { display: none; }
-.group-panel.active { display: block; }
-.prose-panel { display: none; animation: fadeIn .2s ease; }
-.prose-panel.active { display: block; }
-.analysis-card { margin-bottom: 16px; }
-
-.table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
-table.data { width: 100%; border-collapse: collapse; font-size: .84rem; }
-table.data th {
-  text-align: left; padding: 10px 12px; background: var(--surface-3);
-  color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-table.data td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-table.data tr:hover td { background: rgba(79,140,255,.06); }
-table.data tr:last-child td { border-bottom: none; }
-td.up { color: var(--up); font-weight: 600; }
-td.down { color: var(--down); font-weight: 600; }
-.tag-pill {
-  display: inline-block; margin: 2px 4px 2px 0; padding: 2px 7px;
-  border-radius: 4px; background: var(--surface-3); font-size: .75rem; color: var(--muted);
-}
-.stance-pill {
-  display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: .75rem; font-weight: 600;
-}
-.stance-holding { background: rgba(79,140,255,.2); color: #a8c7ff; }
-.stance-candidate { background: rgba(62,207,142,.15); color: #9ee8c0; }
-.stance-watch { background: rgba(245,166,35,.15); color: #ffd08a; }
-.stance-other { background: rgba(143,163,190,.15); color: var(--muted); }
-
-.material-list { display: flex; flex-direction: column; gap: 8px; }
-.material-item summary { font-size: .9rem; }
-.material-meta { font-size: .8rem; color: var(--muted); margin-top: 6px; }
-.status-reuse { color: #9ee8c0; }
-.status-refresh, .status-first_run { color: #a8c7ff; }
-.status-failed { color: #ffb4b4; }
-
-.footer-note { margin-top: 32px; text-align: center; font-size: .78rem; color: var(--muted); }
 """
 
-_LABEL_BADGE = {
-    "大利空": "badge-critical-bear",
-    "大利好": "badge-critical-bull",
-    "利空": "badge-bear",
-    "利好": "badge-bull",
-    "轻空": "badge-bear",
-    "轻多": "badge-bull",
-}
-
-_STANCE_CLASS = {
-    "持仓": "stance-holding",
-    "候选": "stance-candidate",
-    "观察": "stance-watch",
-    "其它": "stance-other",
-}
+_STOCK_BLOCK = re.compile(r'<details class="stock-block">.*?</details>', re.DOTALL)
+_STOCK_CODE = re.compile(r'id="stock-(\d{6})"')
 
 
-def _badge_html(label: str, unverified: bool = False) -> str:
-    base = str(label or "").split("·")[0]
-    cls = _LABEL_BADGE.get(base, "badge-bear")
-    out = f'<span class="badge {cls}">{html.escape(label)}</span>'
-    if unverified or "待核实" in str(label):
-        out += '<span class="badge badge-unverified">待核实</span>'
+def _stock_blocks_by_code(html_text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for block in _STOCK_BLOCK.finditer(html_text or ""):
+        text = block.group(0)
+        m = _STOCK_CODE.search(text)
+        if m:
+            out[m.group(1)] = text
     return out
 
 
-def _pct_td(val: Any) -> str:
-    try:
-        v = float(val)
-        cls = "up" if v > 0 else "down" if v < 0 else ""
-        return f'<td class="{cls}">{v:+.2f}%</td>'
-    except (TypeError, ValueError):
-        return f"<td>{html.escape(str(val or '—'))}</td>"
+def _chip_time_label(context_as_of: str) -> str:
+    s = str(context_as_of or "").strip()
+    if " " in s:
+        return s.split(" ", 1)[1]
+    return s
 
 
-def _stance_pill(label: str, primary: str = "") -> str:
-    cls = _STANCE_CLASS.get(label, "stance-other")
-    return f'<span class="stance-pill {cls}">{html.escape(label or "—")}</span>'
-
-
-def _chips_html(rc: dict[str, Any]) -> str:
-    chips = [
-        f'<span class="chip accent">{rc.get("code_count", 0)} 只分析</span>',
-        f'<span class="chip accent">{rc.get("row_count", 0)} 行板块</span>',
-        f'<span class="chip {"ok" if rc.get("cls_complete") else "warn"}">财联社 {html.escape(str(rc.get("cls_articles_found", "")))}</span>',
-    ]
+def _hero_meta_chips_html(rc: dict[str, Any]) -> str:
+    trade_date = html.escape(str(rc.get("trade_date") or ""))
+    session = f'<span class="chip accent">盘后复盘 · 明日策略 · 交易日 {trade_date}</span>'
+    time_bit = _chip_time_label(str(rc.get("context_as_of") or ""))
     if rc.get("ai_ok"):
-        chips.append('<span class="chip ok">AI 已生成</span>')
+        ai_label = f"AI 已生成{time_bit}" if time_bit else "AI 已生成"
+        ai = f'<span class="chip ok">{html.escape(ai_label)}</span>'
     else:
-        chips.append('<span class="chip err">AI 未就绪</span>')
-    if rc.get("ai_model"):
-        chips.append(f'<span class="chip">{html.escape(str(rc["ai_model"]))}</span>')
-    return "".join(chips)
+        ai_label = f"AI 未就绪{time_bit}" if time_bit else "AI 未就绪"
+        ai = f'<span class="chip err">{html.escape(ai_label)}</span>'
+    return session + ai
+
+
+def _hero_head_html(rc: dict[str, Any]) -> str:
+    return (
+        f'<div class="hero-head">'
+        f'<h1 class="hero-name">明日作战卡</h1>'
+        f"{_summary_trigger_html(rc)}"
+        f"{_hero_meta_chips_html(rc)}"
+        f"</div>"
+    )
+
+
+def _summary_trigger_html(rc: dict[str, Any]) -> str:
+    if not rc.get("ai_ok"):
+        return ""
+    return (
+        '<button type="button" class="summary-trigger" id="open-summary" '
+        'aria-haspopup="dialog" aria-controls="summary-modal">摘要</button>'
+    )
+
+
+def _summary_modal_html(rc: dict[str, Any]) -> str:
+    if not rc.get("ai_ok"):
+        return ""
+    body = push_summary_to_html(rc.get("ai_summary_raw") or "")
+    return (
+        '<div id="summary-modal" class="modal" role="dialog" aria-modal="true" '
+        'aria-labelledby="summary-modal-title" hidden>'
+        '<div class="modal-backdrop" data-close-summary></div>'
+        '<div class="modal-panel">'
+        '<div class="modal-head"><div><span id="summary-modal-title">推送摘要</span>'
+        '<span class="modal-head-sub">与微信同版</span></div>'
+        '<button type="button" class="modal-close" data-close-summary aria-label="关闭">×</button>'
+        f"</div><div class=\"modal-body\">{body}</div></div></div>"
+    )
+
+
+def _strip_session_prefix(text: str) -> str:
+    t = str(text or "").strip()
+    for prefix in ("全天：", "全天:", "收盘：", "收盘:"):
+        if t.startswith(prefix):
+            return t[len(prefix) :].strip()
+    return t
+
+
+def _brief_segments(text: str) -> list[str]:
+    body = _strip_session_prefix(text)
+    if not body or body == "—":
+        return []
+    out: list[str] = []
+    for seg in body.split("；"):
+        seg = seg.strip()
+        if not seg or seg in ("主线：", "主线:", "主线"):
+            continue
+        out.append(seg)
+    return out
+
+
+def _env_seg_class(seg: str) -> str:
+    if "不可用" in seg or "存疑" in seg:
+        return " warn"
+    for key in ("沪指", "创业板", "深成指", "科创"):
+        if not seg.startswith(key):
+            continue
+        try:
+            pct = float(seg.split("%", 1)[0].split(key, 1)[1])
+            if pct > 0:
+                return " up"
+            if pct < 0:
+                return " down"
+        except (IndexError, ValueError):
+            pass
+        break
+    return ""
+
+
+def _env_segments_html(segments: list[str]) -> str:
+    if not segments:
+        return '<span class="env-seg">—</span>'
+    return "".join(
+        f'<span class="env-seg{_env_seg_class(seg)}">{html.escape(seg)}</span>' for seg in segments
+    )
+
+
+def _market_env_top_html(rc: dict[str, Any]) -> str:
+    ml = rc.get("market_local") or {}
+    l1_segs = _brief_segments(str(ml.get("l1_brief") or ""))
+    l2_segs = _brief_segments(str(ml.get("l2_brief") or ""))
+    if not l1_segs and not l2_segs:
+        return ""
+    session = html.escape(str(rc.get("session_label") or "晚间收市"))
+    return (
+        f'<div class="env-strip">'
+        f'<div class="env-strip-head">全天大盘 <span class="env-slot">{session}</span></div>'
+        f'<div class="env-row env-l1"><span class="env-label">L1</span>'
+        f'<div class="env-segments">{_env_segments_html(l1_segs)}</div></div>'
+        f'<div class="env-row env-l2"><span class="env-label">L2</span>'
+        f'<div class="env-segments">{_env_segments_html(l2_segs)}</div></div>'
+        f"</div>"
+    )
 
 
 def _alerts_html(rc: dict[str, Any]) -> str:
@@ -251,173 +421,49 @@ def _alerts_html(rc: dict[str, Any]) -> str:
     return "".join(parts)
 
 
-def _events_block_html(rc: dict[str, Any]) -> str:
-    events_by_code = rc.get("events_by_code") or {}
-    by_code = rc.get("by_code") or {}
-    if not events_by_code:
-        return ""
-    cards = []
-    for code in sorted(events_by_code.keys()):
-        ev = events_by_code[code]
-        lb = (by_code.get(code) or {}).get("local_block") or {}
-        name = lb.get("name", code)
-        groups = ", ".join(lb.get("groups") or [])
-        items = []
-        for item in ev.get("display") or []:
-            items.append(
-                f'<div class="event-item">{_badge_html(str(item.get("label", "")), bool(item.get("unverified")))}'
-                f'{html.escape(str(item.get("title", "")))} '
-                f'<span class="groups">{html.escape(str(item.get("pub_date", "")))}</span></div>'
-            )
-        if not items:
-            items.append('<div class="event-item muted">无规则命中</div>')
-        cards.append(
-            f'<div class="event-card"><div class="head">'
-            f'<span class="code-name">{html.escape(code)} {html.escape(name)}</span>'
-            f'<span class="groups">{html.escape(groups)}</span></div>{"".join(items)}</div>'
-        )
-    return f'<div class="card"><div class="card-label">重大事件</div>{"".join(cards)}</div>'
-
-
-def _market_accordion(rc: dict[str, Any]) -> str:
-    ml = rc.get("market_local") or {}
-    constraints = "".join(f"<li>{html.escape(c)}</li>" for c in (ml.get("constraints") or []))
-    return f"""<details class="accordion">
-<summary>大盘环境（L1 / L2）</summary>
-<div class="inner">
-<p><strong>L1</strong> {html.escape(str(ml.get("l1_brief", "")))}</p>
-<p><strong>L2</strong> {html.escape(str(ml.get("l2_brief", "")))}</p>
-<ul>{constraints}</ul>
-</div></details>"""
-
-
-def _cls_appendix(rc: dict[str, Any]) -> str:
-    slots = (rc.get("cls_digest") or {}).get("slots") or {}
-    items = []
-    for key, rec in slots.items():
-        if not isinstance(rec, dict):
-            continue
-        status = "ok" if rec.get("ok") else "missing"
-        summary = str(rec.get("summary") or rec.get("message") or "")[:280]
-        label = rec.get("label", key)
-        items.append(
-            f'<div class="cls-item"><div class="slot">{html.escape(str(label))} [{status}]</div>'
-            f'{html.escape(summary)}</div>'
-        )
-    feeds = rc.get("feeds_digest_by_code") or {}
-    stats = {"reuse": 0, "refresh": 0, "first_run": 0, "failed": 0, "empty": 0}
-    for rec in feeds.values():
-        st = str(rec.get("status") or "")
-        if st in stats:
-            stats[st] += 1
-    stat_line = " · ".join(f"{k} {v}" for k, v in stats.items() if v)
-    return f"""<details class="accordion">
-<summary>预消化资料（财联社 + feeds）</summary>
-<div class="inner"><div class="cls-grid">{"".join(items)}</div>
-<p class="material-meta">feeds digest：{html.escape(stat_line or "—")}</p></div></details>"""
-
-
-def _snapshot_html(rc: dict[str, Any]) -> str:
-    group_order = rc.get("group_order") or []
-    rows = rc.get("snapshot_rows") or []
-    by_group: dict[str, list] = {}
-    for row in rows:
-        g = str(row.get("group") or "其它")
-        by_group.setdefault(g, []).append(row)
-
-    tab_btns = []
-    panels = []
-    for i, g in enumerate(group_order):
-        grp_rows = by_group.get(g) or []
-        if not grp_rows:
-            continue
-        active = " active" if i == 0 else ""
-        tab_btns.append(
-            f'<button type="button" class="{active.strip()}" data-group="{html.escape(g)}">'
-            f'{html.escape(g)} ({len(grp_rows)})</button>'
-        )
-        trs = []
-        for r in grp_rows:
-            tags = "".join(f'<span class="tag-pill">{html.escape(t)}</span>' for t in (r.get("tags") or [])[:5])
-            trs.append(
-                "<tr>"
-                f'<td><a href="{html.escape(r.get("stock_href", ""))}" onclick="jumpStock(event)">{html.escape(str(r.get("code", "")))}</a></td>'
-                f"<td>{html.escape(str(r.get('name', '')))}</td>"
-                f"{_pct_td(r.get('pct_chg'))}"
-                f"<td>{html.escape(str(r.get('pct_5d', '—')))}</td>"
-                f"<td>{html.escape(str(r.get('main_net_yi', '—')))}</td>"
-                f"<td>{tags}</td>"
-                f"<td>{html.escape(str(r.get('events_label', '')))}</td>"
-                f"<td>{_stance_pill(str(r.get('stance_label', '')))}</td>"
-                "</tr>"
-            )
-        panels.append(
-            f'<div class="group-panel{active}" data-group-panel="{html.escape(g)}">'
-            f'<div class="table-wrap"><table class="data"><thead><tr>'
-            f"<th>代码</th><th>名称</th><th>今%</th><th>5日%</th><th>主力(亿)</th><th>标签</th><th>事件</th><th>镜头</th>"
-            f"</tr></thead><tbody>{''.join(trs)}</tbody></table></div></div>"
-        )
-    return f"""<div class="group-tabs" id="group-tabs">{"".join(tab_btns)}</div>{"".join(panels)}"""
-
-
-def _materials_html(rc: dict[str, Any]) -> str:
-    by_code = rc.get("by_code") or {}
-    feeds = rc.get("feeds_digest_by_code") or {}
-    events = rc.get("events_by_code") or {}
-    items = []
-    for code in sorted(by_code.keys()):
-        lb = (by_code.get(code) or {}).get("local_block") or {}
-        fd = feeds.get(code) or {}
-        ev_disp = (events.get(code) or {}).get("display") or []
-        st = str(fd.get("status") or "—")
-        st_cls = f"status-{st}" if st in ("reuse", "refresh", "first_run", "failed") else ""
-        ev_lines = "".join(
-            f"<li>{html.escape(str(e.get('label', '')))} {html.escape(str(e.get('title', ''))[:40])}</li>"
-            for e in ev_disp[:3]
-        )
-        items.append(
-            f'<details class="accordion material-item"><summary>'
-            f'<strong>{html.escape(code)}</strong> {html.escape(str(lb.get("name", "")))} '
-            f'<span class="{st_cls}">[{html.escape(st)}]</span></summary><div class="inner">'
-            f'<p>{html.escape(str(fd.get("summary", ""))[:300])}</p>'
-            f'<p class="material-meta">{html.escape(str(fd.get("context_note", "")))}</p>'
-            f"<ul>{ev_lines}</ul></div></details>"
-        )
-    exp = rc.get("expectations_path") or ""
-    return f'<div class="card"><p class="material-meta">明日预期：{html.escape(exp)}</p></div><div class="material-list">{"".join(items)}</div>'
-
-
 def _prose_body_html(rc: dict[str, Any]) -> str:
-    sections = markdown_sections_to_html(rc.get("ai_body_raw") or "")
-    if not sections:
+    raw = rc.get("ai_body_raw") or ""
+    if not raw:
         return ""
-    if len(sections) == 1 and sections[0]["label"] == "全文":
-        return f'<div class="card prose analysis-card"><div class="card-label">AI 正文</div>{sections[0]["html"]}</div>'
+    snap_by_code = snapshot_rows_by_code(rc.get("snapshot_rows"))
+    full_html = markdown_to_html(raw, stock_body=True)
+    full_html = inject_stock_events_footer(
+        inject_stock_fact_strips(full_html, snap_by_code),
+        snap_by_code,
+    )
+    blocks = _stock_blocks_by_code(full_html)
 
-    by_label = {str(s["label"]): s for s in sections}
-    order = [str(g) for g in (rc.get("group_order") or []) if str(g) in by_label]
-    for s in sections:
-        if str(s["label"]) not in order:
-            order.append(str(s["label"]))
+    group_order = [str(g) for g in (rc.get("group_order") or []) if str(g)]
+    rows = rc.get("snapshot_rows") or []
+    if not group_order:
+        return f'<div class="card prose analysis-card">{full_html}</div>'
+
+    visible: list[tuple[str, list[str]]] = []
+    for g in group_order:
+        codes = [str(row.get("code") or "") for row in rows if str(row.get("group") or "") == g]
+        if codes:
+            visible.append((g, codes))
+    if not visible:
+        return f'<div class="card prose analysis-card">{full_html}</div>'
 
     tab_btns: list[str] = []
     panels: list[str] = []
-    for i, label in enumerate(order):
-        sec = by_label.get(label)
-        if not sec:
-            continue
+    for i, (label, codes) in enumerate(visible):
         active = " active" if i == 0 else ""
-        cnt = sec.get("count", "0")
-        suffix = f" ({cnt})" if cnt and cnt != "0" else ""
         tab_btns.append(
             f'<button type="button" class="{active.strip()}" data-prose-group="{html.escape(label)}">'
-            f'{html.escape(label)}{suffix}</button>'
+            f'{html.escape(label)} ({len(codes)})</button>'
         )
+        parts: list[str] = []
+        for code in codes:
+            if code in blocks:
+                parts.append(blocks[code])
         panels.append(
-            f'<div class="prose-panel{active}" data-prose-panel="{html.escape(label)}">{sec["html"]}</div>'
+            f'<div class="prose-panel{active}" data-prose-panel="{html.escape(label)}">'
+            f'{"".join(parts)}</div>'
         )
     return (
-        f'<div class="card analysis-card"><div class="card-label">AI 正文</div>'
+        f'<div class="card analysis-card">'
         f'<div class="group-tabs" id="prose-tabs">{"".join(tab_btns)}</div>'
         f'<div class="prose">{"".join(panels)}</div></div>'
     )
@@ -425,60 +471,47 @@ def _prose_body_html(rc: dict[str, Any]) -> str:
 
 def _analysis_panel(rc: dict[str, Any]) -> str:
     if rc.get("ai_ok"):
-        summary_html = push_summary_to_html(rc.get("ai_summary_raw") or "")
-        ai_block = f"""<details class="accordion">
-<summary>推送摘要（与微信同版，点击展开）</summary>
-<div class="inner">{summary_html}</div></details>
-{_prose_body_html(rc)}"""
-    else:
-        msg = rc.get("ai_error") or "AI 未生成，请运行 generate --phase ai"
-        ai_block = f'<div class="card alert-err">{html.escape(msg)}</div>'
-    return ai_block + _events_block_html(rc) + _market_accordion(rc) + _cls_appendix(rc)
+        return _prose_body_html(rc)
+    msg = rc.get("ai_error") or "AI 未生成，请运行 generate --phase ai"
+    return f'<div class="card alert-err">{html.escape(msg)}</div>'
 
 
 EVENING_JS = """
-function showTab(id, btn) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-nav button').forEach(b => b.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  if (btn) btn.classList.add('active');
+function openSummaryModal() {
+  const modal = document.getElementById('summary-modal');
+  if (!modal) return;
+  modal.hidden = false;
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
 }
+function closeSummaryModal() {
+  const modal = document.getElementById('summary-modal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.hidden = true;
+  document.body.style.overflow = '';
+}
+document.getElementById('open-summary')?.addEventListener('click', openSummaryModal);
+document.querySelectorAll('[data-close-summary]').forEach(el => {
+  el.addEventListener('click', closeSummaryModal);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSummaryModal();
+});
 function activateProseTab(g) {
   document.querySelectorAll('#prose-tabs button').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('[data-prose-panel]').forEach(p => p.classList.remove('active'));
   document.querySelector(`#prose-tabs button[data-prose-group="${CSS.escape(g)}"]`)?.classList.add('active');
   document.querySelector(`[data-prose-panel="${CSS.escape(g)}"]`)?.classList.add('active');
 }
-function jumpStock(e) {
-  e.preventDefault();
-  const href = e.currentTarget.getAttribute('href');
-  showTab('panel-analysis', document.querySelector('.tab-nav button'));
-  if (href) {
-    const el = document.querySelector(href);
-    const panel = el?.closest('[data-prose-panel]');
-    if (panel?.dataset.prosePanel) activateProseTab(panel.dataset.prosePanel);
-    location.hash = href;
-    el?.scrollIntoView({behavior:'smooth'});
-  }
-}
 document.querySelectorAll('#prose-tabs button').forEach(btn => {
   btn.addEventListener('click', () => activateProseTab(btn.dataset.proseGroup));
-});
-document.querySelectorAll('#group-tabs button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const g = btn.dataset.group;
-    document.querySelectorAll('#group-tabs button').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('#panel-snapshot .group-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelector(`#panel-snapshot [data-group-panel="${CSS.escape(g)}"]`)?.classList.add('active');
-  });
 });
 """
 
 
 def build_evening_page(rc: dict[str, Any]) -> str:
     trade_date = html.escape(str(rc.get("trade_date", "")))
-    ctx_as_of = html.escape(str(rc.get("context_as_of", "")))
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -490,20 +523,13 @@ def build_evening_page(rc: dict[str, Any]) -> str:
 <body>
 <div class="wrap">
 <header class="hero">
-<h1>明日作战卡</h1>
-<p class="sub">分析时刻 {ctx_as_of} · 交易日 {trade_date}</p>
-<div class="chips">{_chips_html(rc)}</div>
+{_hero_head_html(rc)}
 {_alerts_html(rc)}
 </header>
-<nav class="tab-nav">
-<button type="button" class="active" onclick="showTab('panel-analysis', this)">研判</button>
-<button type="button" onclick="showTab('panel-snapshot', this)">行情快照</button>
-<button type="button" onclick="showTab('panel-material', this)">素材</button>
-</nav>
-<section id="panel-analysis" class="panel active">{_analysis_panel(rc)}</section>
-<section id="panel-snapshot" class="panel"><div class="card">{_snapshot_html(rc)}</div></section>
-<section id="panel-material" class="panel">{_materials_html(rc)}</section>
+{_market_env_top_html(rc)}
+<section id="panel-analysis" class="panel">{_analysis_panel(rc)}</section>
 <p class="footer-note">ZXTT · 生成于 {html.escape(str(rc.get("generated_at", "")))}</p>
+{_summary_modal_html(rc)}
 </div>
 <script>{EVENING_JS}</script>
 </body>

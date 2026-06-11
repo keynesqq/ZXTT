@@ -38,6 +38,13 @@ class TestEveningCollect(unittest.TestCase):
         self.assertEqual(result.get("overall"), "fail")
         self.assertEqual(result.get("reason"), "quote_failed")
 
+    def test_evening_refreshes_existing_quote(self) -> None:
+        with patch("evening.collect.query_quotes") as mock_q:
+            mock_q.return_value = (None, ROOT / "data" / "quote_query_2026-06-10.json", {"code_count": 31})
+            result = run_collect_evening(on_date=_DAY, force=True, skip_network=False)
+        self.assertEqual(result.get("outcome"), "ok")
+        mock_q.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

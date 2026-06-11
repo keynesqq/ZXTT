@@ -20,19 +20,26 @@ def _analysis_order(by_code: dict[str, Any], tags_by_code: dict[str, Any]) -> li
     return out
 
 
-def _priority_instructions(order: list[str], tags_by_code: dict[str, Any]) -> str:
-    counts = {s: 0 for s in _STANCE_ORDER}
+def _priority_instructions(
+    order: list[str],
+    *,
+    group_order: list[str],
+    local_blocks: dict[str, Any],
+) -> str:
+    group_counts = {g: 0 for g in group_order}
+    names: list[str] = []
     for code in order:
-        stance = (tags_by_code.get(code) or {}).get("primary_stance", "theme_other")
-        counts[stance] = counts.get(stance, 0) + 1
-    names = []
-    for code in order:
-        t = tags_by_code.get(code) or {}
-        names.append(f"{code} {t.get('stance_label','')}")
+        lb = local_blocks.get(code) or {}
+        gs = lb.get("groups") or []
+        for g in gs:
+            if g in group_counts:
+                group_counts[g] += 1
+        names.append(f"{code} {lb.get('name','')} [{','.join(gs)}]")
+    group_line = "；".join(f"{g}({group_counts.get(g, 0)})" for g in group_order)
     return (
-        "31 只均须正文+推送摘要各一条（不可跳过）。"
-        f"镜头侧重：我的({counts.get('holding',0)}) > 想买的({counts.get('candidate',0)}) > "
-        f"观察({counts.get('watch_right',0)}) > 其它({counts.get('theme_other',0)})。"
+        "31 只同级、全部自选板块同等深度：每只正文须含情景推演+对应策略+开盘参考（与「我的」持仓同模板）。"
+        "同股多板块须各写一份完整分析。\n"
+        f"自选板块分章：{group_line}。\n"
         f"必分析清单：{', '.join(names[:12])}…"
     )
 
@@ -50,6 +57,7 @@ def build_evening_context_skeleton(
     meta = dict(bundle.get("meta") or {})
     meta["pipeline_step"] = "3.7"
     order = _analysis_order(bundle.get("by_code") or {}, tags_by_code)
+    group_order = bundle.get("group_order") or []
 
     sentiment = (bundle.get("market") or {}).get("sentiment") or {}
     cls_fin = (bundle.get("market") or {}).get("cls_finance") or {}
@@ -76,11 +84,11 @@ def build_evening_context_skeleton(
         )
 
     events_lines = []
-    for stance in _STANCE_ORDER:
-        codes = [c for c in order if (tags_by_code.get(c) or {}).get("primary_stance") == stance]
+    for g in group_order:
+        codes = [c for c in order if g in ((local_blocks.get(c) or {}).get("groups") or [])]
         if not codes:
             continue
-        events_lines.append(f"## {stance}")
+        events_lines.append(f"## {g}")
         for code in codes:
             ev = events_by_code.get(code) or {}
             disp = ev.get("display") or []
@@ -109,7 +117,11 @@ def build_evening_context_skeleton(
         "by_code": by_code_out,
         "feeds_digest_by_code": feeds_digest_by_code,
         "prompt": {
-            "priority_instructions": _priority_instructions(order, tags_by_code),
+            "priority_instructions": _priority_instructions(
+                order,
+                group_order=group_order,
+                local_blocks=local_blocks,
+            ),
             "global": "\n".join(global_parts),
             "feeds_digest_bundle": "\n".join(bundle_lines),
             "events_block": "\n".join(events_lines),
@@ -118,6 +130,7 @@ def build_evening_context_skeleton(
                     "code": code,
                     "name": (local_blocks.get(code) or {}).get("name", code),
                     "stance_hint": (tags_by_code.get(code) or {}).get("stance_label", ""),
+                    "groups": (local_blocks.get(code) or {}).get("groups") or [],
                     "prompt_line": (local_blocks.get(code) or {}).get("prompt_line", ""),
                 }
                 for code in order

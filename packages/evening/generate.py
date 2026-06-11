@@ -30,7 +30,19 @@ def _load_context(day: date) -> dict[str, Any]:
     path = _CTX_DIR / f"{day.isoformat()}.json"
     if not path.is_file():
         raise FileNotFoundError(f"evening_context missing: {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    ctx = json.loads(path.read_text(encoding="utf-8"))
+    _ensure_stock_groups(ctx)
+    return ctx
+
+
+def _ensure_stock_groups(ctx: dict[str, Any]) -> None:
+    by_code = ctx.get("by_code") or {}
+    for stock in (ctx.get("prompt") or {}).get("stocks") or []:
+        if stock.get("groups"):
+            continue
+        code = str(stock.get("code") or "")
+        lb = (by_code.get(code) or {}).get("local_block") or {}
+        stock["groups"] = list(lb.get("groups") or [])
 
 
 def _update_synthesize_manifest(day: date, record: dict[str, Any]) -> None:

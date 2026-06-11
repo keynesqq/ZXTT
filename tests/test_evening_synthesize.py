@@ -37,12 +37,36 @@ class EvaluateRawTests(unittest.TestCase):
 预期
 """
         stocks = [
-            {"code": "600519", "stance_hint": "持仓"},
-            {"code": "000021", "stance_hint": "候选"},
+            {"code": "600519", "stance_hint": "持仓", "groups": ["我的"]},
+            {"code": "000021", "stance_hint": "候选", "groups": ["想买的"]},
         ]
         ev = evaluate_raw(raw, stocks)
         self.assertIn("000021", ev["missing_codes"])
         self.assertTrue(ev["critical_missing"])
+        self.assertTrue(needs_quality_retry(ev))
+
+    def test_shallow_stock_triggers_retry(self) -> None:
+        raw = """## 推送摘要
+【环境】中
+
+## 我的
+### 600519 贵州茅台
+今日微涨，观望。
+
+## 想买的
+### 000021 深科技
+**无规则事件**：略。
+- **情景推演**：若涨则持有
+- **对应策略**：等
+- **开盘参考**：基准
+"""
+        stocks = [
+            {"code": "600519", "groups": ["我的"]},
+            {"code": "000021", "groups": ["想买的"]},
+        ]
+        ev = evaluate_raw(raw, stocks)
+        self.assertIn("600519", ev["shallow_codes"])
+        self.assertNotIn("000021", ev["shallow_codes"])
         self.assertTrue(needs_quality_retry(ev))
 
 
