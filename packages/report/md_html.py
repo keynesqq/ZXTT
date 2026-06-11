@@ -19,13 +19,15 @@ _STOCK_CODE_LEAD = re.compile(r"^(\d{6})\s+(.+)$")
 _LIST_ITEM = re.compile(r"^(\s*)[-*]\s+(.*)$")
 
 
-def _h3_with_anchor(line: str) -> str:
+def _h3_with_anchor(line: str, *, as_summary: bool = False) -> str:
     m = _CODE_IN_H3.match(line.strip())
     if m:
         code, name = m.group(1), m.group(2)
+        tag = "summary" if as_summary else "h3"
+        cls = "stock-heading"
         return (
-            f'<h3 class="stock-heading" id="stock-{code}">'
-            f'<span class="code">{html.escape(code)}</span> {html.escape(name)}</h3>'
+            f'<{tag} class="{cls}" id="stock-{code}">'
+            f'<span class="code">{html.escape(code)}</span> {html.escape(name)}</{tag}>'
         )
     return f"<h3>{html.escape(line)}</h3>"
 
@@ -115,7 +117,7 @@ def markdown_to_html(text: str, *, stock_body: bool = False) -> str:
     def close_stock_body() -> None:
         nonlocal stock_open
         if stock_body and stock_open:
-            parts.append("</div>")
+            parts.append("</div></details>")
             stock_open = False
 
     while i < len(lines):
@@ -139,10 +141,13 @@ def markdown_to_html(text: str, *, stock_body: bool = False) -> str:
         if h3m:
             flush_para()
             close_stock_body()
-            parts.append(_h3_with_anchor(h3m.group(1)))
             if stock_body:
+                parts.append('<details class="stock-block">')
+                parts.append(_h3_with_anchor(h3m.group(1), as_summary=True))
                 parts.append('<div class="stock-body">')
                 stock_open = True
+            else:
+                parts.append(_h3_with_anchor(h3m.group(1)))
             i += 1
             continue
 

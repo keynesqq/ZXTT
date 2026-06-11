@@ -41,9 +41,9 @@ class StockFactStripTest(unittest.TestCase):
 
     def test_inject_after_h3(self) -> None:
         prose = (
-            '<h3 class="stock-heading" id="stock-002594">'
-            '<span class="code">002594</span> 比亚迪</h3>'
-            "<p>正文</p>"
+            '<details class="stock-block"><summary class="stock-heading" id="stock-002594">'
+            '<span class="code">002594</span> 比亚迪</summary>'
+            '<div class="stock-body"><p>正文</p></div></details>'
         )
         by_code = snapshot_rows_by_code(
             [
@@ -62,7 +62,7 @@ class StockFactStripTest(unittest.TestCase):
         out = inject_stock_fact_strips(prose, by_code)
         self.assertIn("stock-fact-inline", out)
         self.assertIn("今+0.50%", out)
-        self.assertLess(out.index("stock-fact-inline"), out.index("</h3>"))
+        self.assertLess(out.index("stock-fact-inline"), out.index("</summary>"))
 
 
     def test_events_footer(self) -> None:
@@ -78,8 +78,9 @@ class StockFactStripTest(unittest.TestCase):
 
     def test_inject_events_in_body(self) -> None:
         prose = (
-            '<h3 class="stock-heading" id="stock-000066"><span class="code">000066</span> 中国长城</h3>'
-            '<div class="stock-body"><p>正文</p></div>'
+            '<details class="stock-block"><summary class="stock-heading" id="stock-000066">'
+            '<span class="code">000066</span> 中国长城</summary>'
+            '<div class="stock-body"><p>正文</p></div></details>'
         )
         by_code = snapshot_rows_by_code(
             [

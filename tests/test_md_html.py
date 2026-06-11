@@ -21,6 +21,8 @@ class MdHtmlTest(unittest.TestCase):
             "- 下午以观察为主。"
         )
         out = markdown_to_html(md, stock_body=True)
+        self.assertIn('<details class="stock-block">', out)
+        self.assertIn('<summary class="stock-heading"', out)
         self.assertIn('id="stock-600010"', out)
         self.assertIn('<div class="stock-body">', out)
         self.assertIn('<ul class="prose-list">', out)

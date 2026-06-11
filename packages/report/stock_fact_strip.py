@@ -5,12 +5,12 @@ import html
 import re
 from typing import Any
 
-_STOCK_H3 = re.compile(
-    r'(<h3 class="stock-heading" id="stock-(\d{6})"[^>]*>)(.*?)(</h3>)',
+_STOCK_HEAD = re.compile(
+    r'(<summary class="stock-heading" id="stock-(\d{6})"[^>]*>)(.*?)(</summary>)',
     re.DOTALL,
 )
 _STOCK_BODY = re.compile(
-    r'(<h3 class="stock-heading" id="stock-(\d{6})"[^>]*>.*?</h3>\s*<div class="stock-body">)(.*?)(</div>)',
+    r'(<summary class="stock-heading" id="stock-(\d{6})"[^>]*>.*?</summary>\s*<div class="stock-body">)(.*?)(</div>)',
     re.DOTALL,
 )
 
@@ -122,7 +122,7 @@ def inject_stock_fact_strips(prose_html: str, by_code: dict[str, dict[str, Any]]
     def repl(m: re.Match[str]) -> str:
         return m.group(1) + m.group(3) + stock_fact_strip_html(by_code.get(m.group(2))) + m.group(4)
 
-    return _STOCK_H3.sub(repl, prose_html)
+    return _STOCK_HEAD.sub(repl, prose_html)
 
 
 def inject_stock_events_footer(prose_html: str, by_code: dict[str, dict[str, Any]]) -> str:

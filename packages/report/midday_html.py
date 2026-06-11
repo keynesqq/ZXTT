@@ -153,12 +153,29 @@ a:hover { text-decoration: underline; }
   margin: 28px 0 12px; padding-bottom: 8px; font-size: 1.15rem;
   border-bottom: 1px solid var(--border); color: #c5d4ea;
 }
-.prose h3.stock-heading {
-  margin: 22px 0 10px; padding: 10px 14px; border-radius: 8px;
+.prose h3.stock-heading,
+.prose summary.stock-heading {
+  margin: 22px 0 0; padding: 10px 14px; border-radius: 8px;
   background: var(--surface-2); border-left: 3px solid var(--accent); font-size: 1rem;
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
 }
-.prose h3 .code { font-family: ui-monospace, monospace; color: var(--accent); margin-right: 6px; }
+details.stock-block { margin-bottom: 16px; }
+details.stock-block > summary.stock-heading {
+  list-style: none; cursor: pointer; user-select: none;
+  border-radius: 8px; transition: background .15s;
+}
+details.stock-block > summary.stock-heading::-webkit-details-marker { display: none; }
+details.stock-block > summary.stock-heading::after {
+  content: "展开 ▸"; margin-left: auto; font-size: .72rem; font-weight: 600;
+  color: var(--muted); white-space: nowrap; flex-shrink: 0;
+}
+details.stock-block[open] > summary.stock-heading::after { content: "收起 ▾"; }
+details.stock-block > summary.stock-heading:hover { background: var(--surface-3); }
+details.stock-block[open] > summary.stock-heading {
+  border-radius: 8px 8px 0 0; margin-bottom: 0;
+}
+.prose h3 .code,
+.prose summary .code { font-family: ui-monospace, monospace; color: var(--accent); margin-right: 6px; }
 .stock-fact-inline {
   display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
   font-size: .78rem; font-weight: 400; color: var(--muted);
@@ -172,9 +189,9 @@ a:hover { text-decoration: underline; }
 .stock-fact-inline .fact-muted { color: var(--muted); }
 .stock-fact-inline .fact-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .stock-body {
-  margin: 0 0 20px 4px; padding: 12px 14px 14px 16px;
+  margin: 0 0 0 4px; padding: 12px 14px 14px 16px;
   border-left: 2px solid var(--border); background: rgba(28,39,56,.45);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 0 8px 8px;
 }
 .prose-list {
   margin: 0 0 12px; padding-left: 1.25em; list-style: disc;
@@ -429,7 +446,7 @@ def _prose_body_html(rc: dict[str, Any]) -> str:
     if not sections:
         return ""
     if len(sections) == 1 and sections[0]["label"] == "全文":
-        return f'<div class="card prose analysis-card"><div class="card-label">AI 正文</div>{sections[0]["html"]}</div>'
+        return f'<div class="card prose analysis-card">{sections[0]["html"]}</div>'
 
     by_label = {str(s["label"]): s for s in sections}
     order = [str(g) for g in (rc.get("group_order") or []) if str(g) in by_label]
@@ -454,7 +471,7 @@ def _prose_body_html(rc: dict[str, Any]) -> str:
             f'<div class="prose-panel{active}" data-prose-panel="{html.escape(label)}">{sec["html"]}</div>'
         )
     return (
-        f'<div class="card analysis-card"><div class="card-label">AI 正文</div>'
+        f'<div class="card analysis-card">'
         f'<div class="group-tabs" id="prose-tabs">{"".join(tab_btns)}</div>'
         f'<div class="prose">{"".join(panels)}</div></div>'
     )
