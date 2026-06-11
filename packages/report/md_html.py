@@ -12,6 +12,10 @@ _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _STRONG_TAG = re.compile(r"</?strong>", re.I)
 _CODE_IN_H3 = re.compile(r"^(\d{6})\s+(.+)$")
 _PUSH_SECTION = re.compile(r"【([^】]+)】")
+_PUSH_GLOBAL = frozenset({"环境", "仓位", "操作", "9:15素材", "超预期"})
+_PUSH_PORTFOLIO = frozenset({"我的", "想买的"})
+_ANALYSIS_TIME = re.compile(r"\*\*分析时刻\*\*[：:]\s*(.+)$", re.MULTILINE)
+_STOCK_CODE_LEAD = re.compile(r"^(\d{6})\s+(.+)$")
 _LIST_ITEM = re.compile(r"^(\s*)[-*]\s+(.*)$")
 
 
@@ -200,6 +204,60 @@ def markdown_sections_to_html(text: str, *, stock_body: bool = False) -> list[di
     return sections
 
 
+def _push_section_kind(label: str) -> str:
+    if label in _PUSH_GLOBAL:
+        return "global"
+    if label in _PUSH_PORTFOLIO:
+        return "portfolio"
+    return "watch"
+
+
+def _split_push_items(body: str) -> list[str]:
+    items: list[str] = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        for seg in re.split(r"[；;]", line):
+            seg = seg.strip()
+            if seg:
+                items.append(seg)
+    return items
+
+
+def _strip_analysis_time(body: str) -> tuple[str, str]:
+    m = _ANALYSIS_TIME.search(body)
+    if not m:
+        return body, ""
+    time_text = m.group(1).strip()
+    cleaned = (body[: m.start()] + body[m.end() :]).strip()
+    return cleaned, time_text
+
+
+def _format_push_item(item: str) -> str:
+    m = _STOCK_CODE_LEAD.match(item.strip())
+    if m:
+        code, rest = m.group(1), m.group(2).strip()
+        return (
+            f'<li class="push-stock-item">'
+            f'<span class="push-code">{html.escape(code)}</span>'
+            f'<span class="push-stock-text">{_inline_emphasis(rest)}</span></li>'
+        )
+    return f'<li class="push-stock-item"><span class="push-stock-text">{_inline_emphasis(item)}</span></li>'
+
+
+def _format_push_body(label: str, body: str) -> tuple[str, str]:
+    body, time_text = _strip_analysis_time(body)
+    kind = _push_section_kind(label)
+    if kind == "global":
+        return f'<div class="push-section-body">{_inline_emphasis(body)}</div>', time_text
+    items = _split_push_items(body)
+    if len(items) >= 2 or (items and _STOCK_CODE_LEAD.match(items[0])):
+        lis = "".join(_format_push_item(it) for it in items)
+        return f'<ul class="push-stock-list">{lis}</ul>', time_text
+    return f'<div class="push-section-body">{_inline_emphasis(body)}</div>', time_text
+
+
 def push_summary_to_html(text: str) -> str:
     """微信推送摘要：按【环境】【我的】等分段渲染。"""
     raw = (text or "").strip()
@@ -208,24 +266,35 @@ def push_summary_to_html(text: str) -> str:
     if not _PUSH_SECTION.search(raw):
         return f'<div class="push-summary-fallback">{markdown_to_html(raw)}</div>'
 
-    parts: list[str] = []
+    sections_html: list[str] = []
+    analysis_time = ""
     pos = 0
     for m in _PUSH_SECTION.finditer(raw):
         if m.start() > pos:
             chunk = raw[pos : m.start()].strip()
             if chunk:
-                parts.append(f'<p class="push-lead">{_inline_emphasis(chunk)}</p>')
+                sections_html.append(f'<p class="push-lead">{_inline_emphasis(chunk)}</p>')
         label = m.group(1)
         pos = m.end()
         next_m = _PUSH_SECTION.search(raw, pos)
         end = next_m.start() if next_m else len(raw)
         body = raw[pos:end].strip()
         pos = end
-        parts.append(
-            f'<div class="push-row"><span class="push-label">【{html.escape(label)}】</span>'
-            f'<span class="push-body">{_inline_emphasis(body)}</span></div>'
+        content, time_text = _format_push_body(label, body)
+        if time_text:
+            analysis_time = time_text
+        kind = _push_section_kind(label)
+        sections_html.append(
+            f'<section class="push-section push-section-{kind}">'
+            f'<div class="push-section-head"><span class="push-section-label">{html.escape(label)}</span></div>'
+            f"{content}</section>"
         )
-    return '<div class="push-summary">' + "".join(parts) + "</div>"
+    meta = (
+        f'<p class="push-meta">分析时刻 · {html.escape(analysis_time)}</p>'
+        if analysis_time
+        else ""
+    )
+    return f'<div class="push-summary">{"".join(sections_html)}{meta}</div>'
 
 
 __all__ = ["markdown_to_html", "markdown_sections_to_html", "push_summary_to_html"]

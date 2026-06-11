@@ -64,7 +64,7 @@ def _parse_shard_raw(text: str, *, push_label: str, chapter: str) -> tuple[str, 
         summary_part = parts[0].strip()
         body_part = parts[1].strip()
     else:
-        body_match = re.search(rf"(^##\s*{re.escape(chapter.split('·')[0])}.*)", raw, re.MULTILINE | re.DOTALL)
+        body_match = re.search(rf"(^##\s*{re.escape(chapter)}\b.*)", raw, re.MULTILINE | re.DOTALL)
         if body_match:
             body_part = body_match.group(1).strip()
             summary_part = raw[: body_match.start()].strip()
@@ -152,6 +152,8 @@ def run_sharded_synthesize(
     touch_progress: Callable[[dict[str, Any], str, int], None] | None = None,
     estimate_max_tokens: Callable[[list[dict], int], int] | None = None,
     shard_specs: list[tuple[str, str, str, str, float]] | None = None,
+    stocks_for_shard: Callable[[list[dict], str], list[dict]] | None = None,
+    critical_shard_keys: list[str] | None = None,
 ) -> dict[str, Any]:
     t0 = time.monotonic()
     monolithic_system, global_system, shard_system = systems
@@ -183,7 +185,10 @@ def run_sharded_synthesize(
 
     def _run_shard(item: tuple[str, str, str, str, float]) -> tuple[str, str, str, dict[str, Any]]:
         stance, _hint, chapter, push_label, timeout = item
-        tier_stocks = _stocks_for_stance(stocks, stance)
+        if stocks_for_shard is not None:
+            tier_stocks = stocks_for_shard(stocks, stance)
+        else:
+            tier_stocks = _stocks_for_stance(stocks, stance)
         rec: dict[str, Any] = {"stance": stance, "stock_count": len(tier_stocks)}
         t1 = time.monotonic()
         if not tier_stocks:
@@ -223,7 +228,7 @@ def run_sharded_synthesize(
                         shard_pct.get(stance, 70),
                     )
 
-    critical = ("holding", "candidate")
+    critical = list(critical_shard_keys or ("holding", "candidate"))
     failed_critical = [s for s in critical if s in {_r["stance"] for _r in shard_records if not _r.get("ok")}]
     if failed_critical and cfg.get("synthesize_fallback_monolithic", True):
         mono = run_monolithic_synthesize(

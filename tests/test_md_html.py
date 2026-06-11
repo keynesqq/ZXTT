@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "packages"))
 
-from report.md_html import markdown_to_html
+from report.md_html import markdown_to_html, push_summary_to_html
 
 
 class MdHtmlTest(unittest.TestCase):
@@ -27,6 +27,22 @@ class MdHtmlTest(unittest.TestCase):
         self.assertIn("<strong>上午复盘</strong>", out)
         self.assertIn("<strong>偏弱开盘</strong>", out)
         self.assertLess(out.index("stock-body"), out.index("上午复盘"))
+
+    def test_push_summary_sections(self) -> None:
+        raw = (
+            "【环境】沪指微跌，市场分化。\n"
+            "【操作】下午观察承接。**分析时刻**：2026-06-11 16:20:50\n"
+            "【我的】包钢股份 阴跌观望；巨化股份 阳线可跟踪\n"
+            "【想买的】000021 深科技涨1.46%关注支撑；000066 中国长城跌3.28%观望"
+        )
+        out = push_summary_to_html(raw)
+        self.assertIn("push-section-global", out)
+        self.assertIn("push-section-portfolio", out)
+        self.assertIn("push-stock-list", out)
+        self.assertIn("push-code", out)
+        self.assertIn("000021", out)
+        self.assertIn("分析时刻", out)
+        self.assertNotIn("push-row", out)
 
 
 if __name__ == "__main__":

@@ -21,19 +21,23 @@ class StockFactStripTest(unittest.TestCase):
         html_out = stock_fact_strip_html(
             {
                 "code": "600519",
+                "price": 1688.5,
+                "high": 1695,
+                "low": 1670.2,
                 "pct_chg": 2.35,
                 "pct_5d": -1.2,
                 "main_net_yi": 1.23,
                 "tags": ["放量", "趋势"],
-                "stance_label": "持仓",
             }
         )
+        self.assertIn("现1688.5", html_out)
+        self.assertIn("高1695", html_out)
+        self.assertIn("低1670.2", html_out)
         self.assertIn("今+2.35%", html_out)
         self.assertIn("5日-1.20%", html_out)
         self.assertIn("主力+1.23亿", html_out)
         self.assertIn("放量", html_out)
-        self.assertIn("stance-pill", html_out)
-        self.assertIn("持仓", html_out)
+        self.assertNotIn("stance-pill", html_out)
 
     def test_inject_after_h3(self) -> None:
         prose = (
@@ -42,7 +46,18 @@ class StockFactStripTest(unittest.TestCase):
             "<p>正文</p>"
         )
         by_code = snapshot_rows_by_code(
-            [{"code": "002594", "pct_chg": 0.5, "pct_5d": 3.0, "main_net_yi": -0.5, "tags": ["观察"]}]
+            [
+                {
+                    "code": "002594",
+                    "price": 250.12,
+                    "high": 252,
+                    "low": 248.5,
+                    "pct_chg": 0.5,
+                    "pct_5d": 3.0,
+                    "main_net_yi": -0.5,
+                    "tags": ["观察"],
+                }
+            ]
         )
         out = inject_stock_fact_strips(prose, by_code)
         self.assertIn("stock-fact-inline", out)

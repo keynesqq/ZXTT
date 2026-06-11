@@ -23,14 +23,6 @@ _EVENT_BADGE = {
     "轻多": "badge-bull",
 }
 
-_STANCE_CLASS = {
-    "持仓": "stance-holding",
-    "候选": "stance-candidate",
-    "观察": "stance-watch",
-    "其它": "stance-other",
-}
-
-
 def snapshot_rows_by_code(rows: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for row in rows or []:
@@ -49,6 +41,15 @@ def _pct_span(val: Any, *, label: str) -> str:
         return f'<span class="fact fact-muted">{html.escape(label)}—</span>'
 
 
+def _price_span(val: Any, *, label: str) -> str:
+    try:
+        v = float(val)
+        text = f"{v:.2f}".rstrip("0").rstrip(".")
+        return f'<span class="fact fact-price">{html.escape(label)}{text}</span>'
+    except (TypeError, ValueError):
+        return f'<span class="fact fact-muted">{html.escape(label)}—</span>'
+
+
 def _main_net_span(val: Any) -> str:
     try:
         v = float(val)
@@ -56,12 +57,6 @@ def _main_net_span(val: Any) -> str:
         return f'<span class="fact fact-pct {cls}">主力{v:+.2f}亿</span>'
     except (TypeError, ValueError):
         return '<span class="fact fact-muted">主力—</span>'
-
-
-def _stance_pill(label: str) -> str:
-    text = str(label or "").strip() or "—"
-    cls = _STANCE_CLASS.get(text, "stance-other")
-    return f'<span class="stance-pill {cls}">{html.escape(text)}</span>'
 
 
 def _event_badge(label: str, *, unverified: bool = False) -> str:
@@ -77,7 +72,7 @@ def stock_fact_strip_html(row: dict[str, Any] | None) -> str:
     if not row:
         return (
             '<span class="stock-fact-inline stock-fact-inline-missing">'
-            '<span class="fact fact-muted">今— · 5日— · 主力— · 标签— · 镜头—</span></span>'
+            '<span class="fact fact-muted">现— · 高— · 低— · 今— · 5日— · 主力— · 标签—</span></span>'
         )
     tags_html = "".join(
         f'<span class="tag-pill">{html.escape(str(t))}</span>' for t in (row.get("tags") or [])[:5]
@@ -85,11 +80,13 @@ def stock_fact_strip_html(row: dict[str, Any] | None) -> str:
     if not tags_html:
         tags_html = '<span class="fact fact-muted">标签—</span>'
     parts = [
+        _price_span(row.get("price"), label="现"),
+        _price_span(row.get("high"), label="高"),
+        _price_span(row.get("low"), label="低"),
         _pct_span(row.get("pct_chg"), label="今"),
         _pct_span(row.get("pct_5d"), label="5日"),
         _main_net_span(row.get("main_net_yi")),
         f'<span class="fact-tags">{tags_html}</span>',
-        _stance_pill(str(row.get("stance_label") or "")),
     ]
     return f'<span class="stock-fact-inline">{"".join(parts)}</span>'
 

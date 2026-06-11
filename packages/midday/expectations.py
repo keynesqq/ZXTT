@@ -11,12 +11,8 @@ from core.context_as_of import now_iso
 from core.io import atomic_write_text
 from core.paths import DATA_DIR
 
-_SECTIONS = (
-    (re.compile(r"^##\s*我的\s*[·•]"), "holding", "持仓"),
-    (re.compile(r"^##\s*想买的\s*[·•]"), "candidate", "候选"),
-    (re.compile(r"^##\s*观察\s*[·•]"), "watch_right", "观察"),
-    (re.compile(r"^##\s*其它\s*[·•]"), "theme_other", "其它"),
-)
+_GROUP_SECTION = re.compile(r"^##\s+(.+)$")
+_SKIP_SECTIONS = frozenset({"推送摘要"})
 _SECTION_STOP = re.compile(r"^##\s*(情绪|主线|午后|下午|跟踪|L1|L2|推送)")
 _HEADING = re.compile(r"^###\s+(\d{6})\s+(.+)$")
 _FIELD = re.compile(r"^\*\*(.+?)\*\*[：:]\s*(.+)$")
@@ -24,33 +20,33 @@ _EXP_DIR = DATA_DIR / "expectations"
 
 
 def _parse_body_sections(text: str) -> dict[str, dict[str, Any]]:
-    current_stance = ""
-    current_label = ""
+    current_group = ""
     current_block: list[str] = []
-    sections: list[tuple[str, str, str]] = []
+    sections: list[tuple[str, str]] = []
 
     for line in (text or "").splitlines():
-        if any(pat.search(line) for pat, _, _ in _SECTIONS):
-            if current_stance and current_block:
-                sections.append((current_stance, current_label, "\n".join(current_block)))
-            for pat, stance, label in _SECTIONS:
-                if pat.search(line):
-                    current_stance, current_label = stance, label
-                    current_block = []
-                    break
+        gm = _GROUP_SECTION.match(line.strip())
+        if gm:
+            title = gm.group(1).strip()
+            if title in _SKIP_SECTIONS:
+                continue
+            if current_group and current_block:
+                sections.append((current_group, "\n".join(current_block)))
+            current_group = title
+            current_block = []
             continue
         if _SECTION_STOP.search(line):
-            if current_stance and current_block:
-                sections.append((current_stance, current_label, "\n".join(current_block)))
-            current_stance, current_block = "", []
+            if current_group and current_block:
+                sections.append((current_group, "\n".join(current_block)))
+            current_group, current_block = "", []
             continue
-        if current_stance:
+        if current_group:
             current_block.append(line)
-    if current_stance and current_block:
-        sections.append((current_stance, current_label, "\n".join(current_block)))
+    if current_group and current_block:
+        sections.append((current_group, "\n".join(current_block)))
 
     out: dict[str, dict[str, Any]] = {}
-    for stance, stance_label, block in sections:
+    for group_name, block in sections:
         code = ""
         name = ""
         fields: dict[str, str] = {}
@@ -70,8 +66,10 @@ def _parse_body_sections(text: str) -> dict[str, dict[str, Any]]:
             out[code] = {
                 "code": code,
                 "name": name.strip(),
-                "primary_stance": stance,
-                "stance_label": stance_label,
+                "primary_group": group_name,
+                "group_label": group_name,
+                "primary_stance": group_name,
+                "stance_label": group_name,
                 "short_expectation": short_exp.strip(),
                 "afternoon_open_scenario": fields.get("午后开盘情景")
                 or fields.get("午后情景")

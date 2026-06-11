@@ -14,7 +14,7 @@ from core.paths import DATA_DIR
 from midday.expectations import extract_and_save_expectations
 from midday.prompt_build import build_midday_user_prompt
 from midday.synthesize import (
-    evaluate_raw,
+    evaluate_midday_raw,
     needs_quality_retry,
     run_monolithic_synthesize,
     run_sharded_synthesize,
@@ -73,7 +73,7 @@ def run_midday_ai(
     raw = synth.get("raw") or ""
     model = synth.get("model") or ""
     err = synth.get("error") or ""
-    eval_result = evaluate_raw(raw, stocks)
+    eval_result = evaluate_midday_raw(raw, stocks)
 
     if needs_quality_retry(eval_result):
         retry = _run_synthesize(ctx)
@@ -82,7 +82,7 @@ def run_midday_ai(
             raw = retry.get("raw") or ""
             model = retry.get("model") or model
             err = retry.get("error") or err
-            eval_result = evaluate_raw(raw, stocks)
+            eval_result = evaluate_midday_raw(raw, stocks)
 
     body = eval_result.get("body") or ""
     summary = eval_result.get("summary") or ""
