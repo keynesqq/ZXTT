@@ -118,10 +118,12 @@ def run_monolithic_synthesize(
     *,
     system: str,
     group_max_tokens: int,
+    estimate_max_tokens: Callable[[list[dict], int], int] | None = None,
 ) -> dict[str, Any]:
     t0 = time.monotonic()
     stocks = (ctx.get("prompt") or {}).get("stocks") or []
-    max_tok = _max_tokens(stocks, cap=group_max_tokens)
+    token_fn = estimate_max_tokens or _max_tokens
+    max_tok = token_fn(stocks, cap=group_max_tokens)
     raw, model, err = _chat_with_retry(
         system,
         user_prompt,
@@ -148,11 +150,15 @@ def run_sharded_synthesize(
     cfg: dict[str, Any],
     group_max_tokens: int,
     touch_progress: Callable[[dict[str, Any], str, int], None] | None = None,
+    estimate_max_tokens: Callable[[list[dict], int], int] | None = None,
+    shard_specs: list[tuple[str, str, str, str, float]] | None = None,
 ) -> dict[str, Any]:
     t0 = time.monotonic()
     monolithic_system, global_system, shard_system = systems
     workers = min(int(cfg.get("synthesize_workers") or 4), 4)
     stocks = (ctx.get("prompt") or {}).get("stocks") or []
+    token_fn = estimate_max_tokens or _max_tokens
+    shards = shard_specs or _SHARDS
     shard_records: list[dict[str, Any]] = []
 
     global_prompt = build_global_prompt(ctx)
@@ -190,7 +196,7 @@ def run_sharded_synthesize(
         raw, model, err = _chat_with_retry(
             shard_sys,
             user,
-            max_tokens=_max_tokens(tier_stocks, cap=group_max_tokens),
+            max_tokens=token_fn(tier_stocks, cap=group_max_tokens),
             timeout_sec=timeout,
         )
         rec.update({"model": model, "error": err or "", "duration_ms": int((time.monotonic() - t1) * 1000)})
@@ -203,7 +209,7 @@ def run_sharded_synthesize(
 
     outputs: dict[str, tuple[str, str]] = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {pool.submit(_run_shard, item): item[0] for item in _SHARDS}
+        futs = {pool.submit(_run_shard, item): item[0] for item in shards}
         shard_pct = {"holding": 55, "candidate": 62, "watch_right": 68, "theme_other": 74}
         for fut in as_completed(futs):
             stance, summary_part, body_part, rec = fut.result()
@@ -225,6 +231,7 @@ def run_sharded_synthesize(
             build_user_prompt(ctx),
             system=monolithic_system,
             group_max_tokens=group_max_tokens,
+            estimate_max_tokens=estimate_max_tokens,
         )
         mono["fallback_from"] = "sharded"
         mono["failed_shards"] = failed_critical
@@ -232,7 +239,7 @@ def run_sharded_synthesize(
         return mono
 
     ordered: list[tuple[str, str, str]] = []
-    for stance, _, chapter, push_label, _ in _SHARDS:
+    for stance, _, chapter, push_label, _ in shards:
         if stance in outputs:
             sp, bp = outputs[stance]
             ordered.append((stance, sp, bp))

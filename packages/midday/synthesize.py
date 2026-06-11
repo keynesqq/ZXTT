@@ -25,6 +25,19 @@ def _group_max_tokens() -> int:
     return int(llm_cfg.get("group_max_tokens") or 12000)
 
 
+def _midday_max_tokens(stocks: list[dict], *, cap: int) -> int:
+    """四档同级深度正文，按只数预留充足 token。"""
+    return min(cap, 600 + len(stocks) * 500)
+
+
+_MIDDAY_SHARDS: list[tuple[str, str, str, str, float]] = [
+    ("holding", "持仓", "我的·持仓深度", "【我的】", 150.0),
+    ("candidate", "候选", "想买的·候选跟踪", "【想买的】", 180.0),
+    ("watch_right", "观察", "观察·跌幅达预期", "【观察】", 200.0),
+    ("theme_other", "其它", "其它·风向跟踪", "【其它】", 150.0),
+]
+
+
 def _touch_ai_progress(ctx: dict[str, Any], detail: str, progress_pct: int) -> None:
     try:
         from midday.run_status import touch_progress
@@ -42,6 +55,7 @@ def run_monolithic_synthesize(ctx: dict[str, Any], user_prompt: str) -> dict[str
         user_prompt,
         system=MIDDAY_SYSTEM,
         group_max_tokens=_group_max_tokens(),
+        estimate_max_tokens=_midday_max_tokens,
     )
 
 
@@ -55,6 +69,8 @@ def run_sharded_synthesize(ctx: dict[str, Any]) -> dict[str, Any]:
         cfg=midday_cfg(),
         group_max_tokens=_group_max_tokens(),
         touch_progress=_touch_ai_progress,
+        estimate_max_tokens=_midday_max_tokens,
+        shard_specs=_MIDDAY_SHARDS,
     )
 
 

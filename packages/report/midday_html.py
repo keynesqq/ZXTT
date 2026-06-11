@@ -6,6 +6,11 @@ import json
 from typing import Any
 
 from report.md_html import markdown_sections_to_html, markdown_to_html, push_summary_to_html
+from report.stock_fact_strip import (
+    inject_stock_events_footer,
+    inject_stock_fact_strips,
+    snapshot_rows_by_code,
+)
 
 MIDDAY_CSS = """
 :root {
@@ -99,9 +104,49 @@ a:hover { text-decoration: underline; }
 .prose h3.stock-heading {
   margin: 22px 0 10px; padding: 10px 14px; border-radius: 8px;
   background: var(--surface-2); border-left: 3px solid var(--accent); font-size: 1rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
 }
 .prose h3 .code { font-family: ui-monospace, monospace; color: var(--accent); margin-right: 6px; }
-.prose p { margin: 8px 0; color: #c8d4e6; }
+.stock-fact-inline {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  font-size: .78rem; font-weight: 400; color: var(--muted);
+}
+.stock-fact-inline::before {
+  content: "·"; color: var(--border); font-weight: 700; margin: 0 2px;
+}
+.stock-fact-inline .fact-pct.up { color: var(--up); font-weight: 600; }
+.stock-fact-inline .fact-pct.down { color: var(--down); font-weight: 600; }
+.stock-fact-inline .fact-muted { color: var(--muted); }
+.stock-fact-inline .fact-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.stock-body {
+  margin: 0 0 20px 4px; padding: 12px 14px 14px 16px;
+  border-left: 2px solid var(--border); background: rgba(28,39,56,.45);
+  border-radius: 0 8px 8px 0;
+}
+.prose-list {
+  margin: 0 0 12px; padding-left: 1.25em; list-style: disc;
+}
+.prose-list .prose-list { margin: 8px 0 4px; list-style: circle; }
+.prose-list > li {
+  margin: 10px 0; padding-left: 4px; color: #c8d4e6; line-height: 1.65;
+}
+.prose-list > li::marker { color: var(--muted); }
+.prose-list li strong { color: #e8eef6; }
+.stock-events-foot {
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border);
+  font-size: .82rem; line-height: 1.55;
+}
+.stock-events-label {
+  display: inline-block; margin-right: 8px; padding: 2px 8px; border-radius: 4px;
+  background: var(--surface-3); color: var(--muted); font-weight: 600; font-size: .75rem;
+  vertical-align: top;
+}
+.stock-events-text { color: #c8d4e6; }
+.stock-events-text.stock-events-muted { color: var(--muted); }
+.stock-event-item { margin: 4px 0 6px; color: #c8d4e6; }
+.stock-event-item .event-date { color: var(--muted); font-size: .78rem; }
+.prose p { margin: 8px 0; color: #c8d4e6; line-height: 1.65; }
+.prose hr.prose-hr { border: none; border-top: 1px dashed var(--border); margin: 16px 0; }
 .prose strong { color: #fff; }
 
 .badge {
@@ -388,7 +433,13 @@ def _materials_html(rc: dict[str, Any]) -> str:
 
 
 def _prose_body_html(rc: dict[str, Any]) -> str:
-    sections = markdown_sections_to_html(rc.get("ai_body_raw") or "")
+    snap_by_code = snapshot_rows_by_code(rc.get("snapshot_rows"))
+    sections = markdown_sections_to_html(rc.get("ai_body_raw") or "", stock_body=True)
+    for sec in sections:
+        sec["html"] = inject_stock_events_footer(
+            inject_stock_fact_strips(sec["html"], snap_by_code),
+            snap_by_code,
+        )
     if not sections:
         return ""
     if len(sections) == 1 and sections[0]["label"] == "全文":

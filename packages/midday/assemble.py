@@ -35,7 +35,8 @@ def _priority_instructions(order: list[str], tags_by_code: dict[str, Any]) -> st
         names.append(f"{code} {t.get('stance_label','')}")
     return (
         "【报告类型】午间作战卡 | 【数据】上午盘+今晨～午间素材 | 【目标】下午午盘\n"
-        "31 只均须正文+推送摘要各一条（不可跳过）。"
+        "31 只均须正文+推送摘要各一条（不可跳过）；四档个股正文结构与「我的」相同："
+        "上午复盘+午后研判+午后情景子项+操作纪律，禁止散文简写。\n"
         f"镜头侧重：我的({counts.get('holding',0)}) > 想买的({counts.get('candidate',0)}) > "
         f"观察({counts.get('watch_right',0)}) > 其它({counts.get('theme_other',0)})。"
         f"必分析清单：{', '.join(names[:12])}…"

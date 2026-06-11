@@ -131,6 +131,7 @@ def build_midday_render_context(*, on_date: date) -> dict[str, Any]:
                 **row,
                 "tags": lb.get("tags") or [],
                 "events_label": lb.get("events_label") or "",
+                "events_display": lb.get("events_display") or [],
                 "stance_label": lb.get("stance_label") or "",
                 "primary_stance": lb.get("primary_stance") or "",
                 "main_net_yi": flow.get("main_net_yi"),

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ai.prompts import MIDDAY_STOCK_BODY_FORMAT
+
 _HINT_TO_STANCE = {
     "持仓": "holding",
     "候选": "candidate",
@@ -112,6 +114,7 @@ def build_midday_shard_prompt(ctx: dict[str, Any], stance: str) -> str:
         format_analysis_time_block(str(meta.get("context_as_of") or "")),
         _MIDDAY_NOTE,
         f"推送标签：{push}；正文章节：## {chapter}；本档 {len(stocks)} 只，逐只不可漏。",
+        MIDDAY_STOCK_BODY_FORMAT,
         _global_brief(str(prompt.get("global") or "")),
         _filter_events_block(str(prompt.get("events_block") or ""), stance),
         "## [个股压缩输入]",
@@ -134,6 +137,7 @@ def build_midday_user_prompt(ctx: dict[str, Any]) -> str:
         format_analysis_time_block(str(meta.get("context_as_of") or "")),
         _MIDDAY_NOTE,
         str(prompt.get("priority_instructions") or ""),
+        MIDDAY_STOCK_BODY_FORMAT,
         str(prompt.get("global") or ""),
         str(prompt.get("feeds_digest_bundle") or ""),
         str(prompt.get("events_block") or ""),
