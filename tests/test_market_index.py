@@ -38,6 +38,16 @@ class ParseIndexLineTests(unittest.TestCase):
         self.assertEqual(row["snapshot_at"], "2026-06-10 12:05:00")
         self.assertIsNotNone(row["open_gap_pct"])
 
+    def test_open_gap_fallback_when_open_zero(self):
+        line = (
+            'v_sh000001="1~上证指数~000001~3992.66~3993.23~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~'
+            '~~20260611092500~-0.57~-0.01~0~0~3992.66/0/0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~"'
+        )
+        row = _parse_index_line(line, "sh000001", "上证指数")
+        self.assertIsNotNone(row)
+        self.assertAlmostEqual(row["open_gap_pct"], -0.01, places=2)
+        self.assertGreater(row["open_gap_pct"], -50)
+
 
 class CollectMarketIndexTests(unittest.TestCase):
     def test_collect_writes_snapshots(self):

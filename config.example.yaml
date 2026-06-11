@@ -19,7 +19,7 @@ auction:
   interval_sec: 30
   watch_start: "09:15:05"
   watch_end: "09:25:05"
-  codes:
+  codes:          # 仅 quote_query/自选不可用时回退；计划任务默认读 quote_query 全池
   - "600519"
   - "000001"
   tier_groups:

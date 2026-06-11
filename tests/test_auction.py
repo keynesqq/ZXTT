@@ -42,8 +42,10 @@ class AuctionStocksTests(unittest.TestCase):
         stocks = resolve_auction_stocks(["600519", "1", "600519"])
         self.assertEqual([s.code for s in stocks], ["600519", "000001"])
 
+    @patch("morning.codes.load_stocks", return_value=[])
+    @patch("morning.codes.load_quote_query_cache", return_value=None)
     @patch("auction.stocks.auction_cfg", return_value={"codes": ["300750", "300750"]})
-    def test_default_codes_from_config(self, _cfg):
+    def test_default_codes_from_config(self, _cfg, _cache, _stocks):
         self.assertEqual(resolve_auction_codes(None), ["300750"])
 
 

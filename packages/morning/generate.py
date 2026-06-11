@@ -10,6 +10,7 @@ from typing import Any
 from core.context_as_of import now_iso
 from core.io import atomic_write_text
 from core.paths import DATA_DIR
+from ai.parse import resolve_ai_report_fields
 from morning.prompt_build import build_morning_user_prompt
 from morning.synthesize import run_morning_synthesize
 
@@ -34,9 +35,16 @@ def run_morning_ai(*, on_date: date | None = None) -> dict[str, Any]:
     raw = synth.get("raw") or ""
     model = synth.get("model") or ""
     err = synth.get("error") or ""
-    body = eval_result.get("body") or ""
-    summary = eval_result.get("summary") or ""
-    missing = eval_result.get("missing_codes") or []
+    stocks = (ctx.get("prompt") or {}).get("stocks") or []
+    fields = resolve_ai_report_fields(
+        raw=raw,
+        body=eval_result.get("body") or "",
+        summary=eval_result.get("summary") or "",
+        stocks=stocks,
+    )
+    body = str(fields["body"])
+    summary = str(fields["summary"])
+    missing = list(fields["missing_codes"])
 
     if not raw:
         payload = {

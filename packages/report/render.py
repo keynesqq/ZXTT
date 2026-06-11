@@ -10,6 +10,7 @@ from core.context_as_of import now_iso
 from core.paths import DATA_DIR, ROOT
 from quote.query_cache import join_quotes_with_memberships, load_quote_query_cache
 from report.md_html import markdown_to_html, push_summary_to_html
+from ai.parse import resolve_ai_report_fields
 
 _CTX_DIR = DATA_DIR / "evening_context"
 _MIDDAY_CTX_DIR = DATA_DIR / "midday_context"
@@ -171,6 +172,24 @@ def build_midday_render_context(*, on_date: date) -> dict[str, Any]:
     }
 
 
+def _morning_ai_fields(ai: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+    """解析 AI 字段；与 generate 写盘同源。"""
+    stocks = (ctx.get("prompt") or {}).get("stocks") or []
+    fields = resolve_ai_report_fields(
+        raw=ai.get("raw") or "",
+        body=ai.get("body") or "",
+        summary=ai.get("summary") or "",
+        stocks=stocks,
+    )
+    body = str(fields["body"])
+    return {
+        "body": body,
+        "summary": str(fields["summary"]),
+        "missing_codes": list(fields["missing_codes"]),
+        "ai_ok": bool(body) and not ai.get("ai_error"),
+    }
+
+
 def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
     ctx = _load_json(_MORNING_CTX_DIR / f"{on_date.isoformat()}.json") or {}
     ai = _load_json(_AI_DIR / f"morning_{on_date.isoformat()}.json") or {}
@@ -179,7 +198,10 @@ def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
     run_st = _load_json(_RUN_DIR / f"{on_date.isoformat()}.json") or {}
     meta = ctx.get("meta") or {}
 
-    ai_ok = bool(ai.get("body")) and not ai.get("ai_error")
+    ai_fields = _morning_ai_fields(ai, ctx)
+    ai_ok = ai_fields["ai_ok"]
+    body = ai_fields["body"]
+    summary = ai_fields["summary"]
     return {
         "trade_date": meta.get("calendar_date") or on_date.isoformat(),
         "context_as_of": meta.get("context_as_of") or "",
@@ -189,11 +211,11 @@ def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
         "ai_ok": ai_ok,
         "ai_error": ai.get("ai_error") or "",
         "ai_model": ai.get("model") or "",
-        "missing_codes": ai.get("missing_codes") or [],
-        "ai_summary_html": push_summary_to_html(ai.get("summary") or ""),
-        "ai_body_html": markdown_to_html(ai.get("body") or ""),
-        "ai_body_raw": ai.get("body") or "",
-        "ai_summary_raw": ai.get("summary") or "",
+        "missing_codes": ai_fields["missing_codes"],
+        "ai_summary_html": push_summary_to_html(summary),
+        "ai_body_html": markdown_to_html(body),
+        "ai_body_raw": body,
+        "ai_summary_raw": summary,
         "checks": checks,
         "morning_pre": pre,
         "open_market": ctx.get("open_market") or {},

@@ -82,13 +82,17 @@ def expected_open_for_code(
     return "", ""
 
 
+def _surprise_verdict(metric: float) -> str:
+    return "超预期偏强" if metric >= 0 else "超预期偏弱"
+
+
 def match_verdict(expected: str, end_gap: float | None) -> str:
     if end_gap is None:
         return "数据缺失"
     metric = end_gap
     if "高开" in expected or "偏强" in expected:
         if metric >= 1.5:
-            return "超预期"
+            return _surprise_verdict(metric)
         if metric >= 0.3:
             return "符合"
         if metric <= -0.5:
@@ -96,16 +100,16 @@ def match_verdict(expected: str, end_gap: float | None) -> str:
         return "部分符合"
     if "低开" in expected or "偏弱" in expected:
         if metric <= -1.5:
-            return "超预期"
+            return _surprise_verdict(metric)
         if metric <= -0.3:
             return "符合"
         if metric >= 0.5:
             return "不符合"
         return "部分符合"
     if metric >= 1.2:
-        return "超预期"
+        return _surprise_verdict(metric)
     if metric <= -1.2:
-        return "超预期"
+        return _surprise_verdict(metric)
     if abs(metric) <= 0.5:
         return "符合"
     return "部分符合"
@@ -138,7 +142,7 @@ def compute_highlight(
     shape_after_920: str,
     pre_status: str,
 ) -> bool:
-    if verdict in ("超预期", "不符合"):
+    if verdict in ("超预期", "超预期偏强", "超预期偏弱", "不符合"):
         return True
     if end_gap is not None and abs(end_gap) >= 2.0:
         return True
@@ -227,7 +231,8 @@ def build_checks(
         "open_market": open_market,
         "rows": rows,
         "summary": {
-            "超预期": sum(1 for r in rows if r.get("verdict") == "超预期"),
+            "超预期偏强": sum(1 for r in rows if r.get("verdict") == "超预期偏强"),
+            "超预期偏弱": sum(1 for r in rows if r.get("verdict") == "超预期偏弱"),
             "不符合": sum(1 for r in rows if r.get("verdict") == "不符合"),
             "highlight": sum(1 for r in rows if r.get("highlight")),
         },

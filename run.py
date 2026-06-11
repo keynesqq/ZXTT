@@ -30,9 +30,9 @@ def cmd_auction(args: argparse.Namespace) -> int:
         from auction.watch import run_auction_watch
 
         cli_codes = [normalize_code(c.strip()) for c in (args.codes or "").split(",") if c.strip()] or None
-        codes = resolve_auction_codes(cli_codes)
+        codes = resolve_auction_codes(cli_codes, on_date=_parse_date(args.date))
         if not codes:
-            print({"outcome": "error", "reason": "need_codes", "hint": "传 --codes 或在 config.yaml 配置 auction.codes"})
+            print({"outcome": "error", "reason": "need_codes", "hint": "传 --codes，或先跑 quote query --all"})
             return 1
         result = run_auction_watch(codes, force=args.force, on_date=_parse_date(args.date))
         ok = result.get("outcome") in ("ok", "skip")

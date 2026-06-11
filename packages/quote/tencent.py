@@ -151,8 +151,11 @@ def _parse_index_line(line: str, fallback_symbol: str, fallback_name: str) -> di
             break
 
     open_gap = None
-    if open_px is not None and pre_close is not None and pre_close > 0:
-        open_gap = round((open_px / pre_close - 1) * 100, 2)
+    gap_px = open_px
+    if (gap_px is None or gap_px <= 0) and price is not None and price > 0:
+        gap_px = price
+    if gap_px is not None and pre_close is not None and pre_close > 0:
+        open_gap = round((gap_px / pre_close - 1) * 100, 2)
     if change is None and price is not None and pre_close is not None:
         change = round(price - pre_close, 2)
 

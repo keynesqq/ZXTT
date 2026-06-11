@@ -274,13 +274,13 @@ JSON 顶层：
 
 ### 9.3 本地 `verdict`
 
-超预期 / 符合 / 部分符合 / 不符合 / 数据缺失（对齐 ZXReport `_match_verdict`）。AI **引用** verdict。
+超预期偏强 / 超预期偏弱 / 符合 / 部分符合 / 不符合 / 数据缺失（对齐 ZXReport `_match_verdict`）。AI **引用** verdict。
 
 ### 9.4 `highlight`
 
 任一满足：
 
-- `verdict` ∈ {超预期, 不符合}
+- `verdict` ∈ {超预期偏强, 超预期偏弱, 不符合}
 - `|end_gap| ≥ 2%` 或 `limit_status ≠ 正常`
 - `shape_after_920` ∈ {一路抬升, 一路走弱, 冲高回落, 探底回升}
 - 9:15 `status=refresh` 且标题命中晚间同级 **轻量规则**（MVP 可仅标「有新增素材」，二期接 3.3 规则）

@@ -1,12 +1,19 @@
 """竞价模块：解析用户传入的个股列表（同股只保留一条）。"""
 from __future__ import annotations
 
+from datetime import date
+
 from core.config import auction_cfg, normalize_code
+from morning.codes import codes_from_quote
 from watchlist.ths_blocks import StockItem
 
 
-def resolve_auction_codes(cli_codes: list[str] | None = None) -> list[str]:
-    """CLI --codes 优先；否则读 config auction.codes。"""
+def resolve_auction_codes(
+    cli_codes: list[str] | None = None,
+    *,
+    on_date: date | None = None,
+) -> list[str]:
+    """CLI --codes 优先；否则 quote_query/自选（31 只）；最后 config auction.codes。"""
     if cli_codes:
         out: list[str] = []
         seen: set[str] = set()
@@ -16,6 +23,10 @@ def resolve_auction_codes(cli_codes: list[str] | None = None) -> list[str]:
                 seen.add(code)
                 out.append(code)
         return out
+    cal = on_date or date.today()
+    from_quote, _ = codes_from_quote(cal)
+    if from_quote:
+        return from_quote
     raw = auction_cfg().get("codes") or []
     out: list[str] = []
     seen: set[str] = set()
