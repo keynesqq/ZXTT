@@ -12,7 +12,10 @@ from core.io import atomic_write_text
 from core.paths import DATA_DIR
 from ai.parse import resolve_ai_report_fields
 from morning.prompt_build import build_morning_user_prompt
-from morning.synthesize import run_morning_synthesize
+from morning.synthesize import (
+    needs_quality_retry,
+    run_morning_synthesize,
+)
 
 _CTX_DIR = DATA_DIR / "morning_context"
 _AI_DIR = DATA_DIR / "scheduled_ai"
@@ -32,6 +35,14 @@ def run_morning_ai(*, on_date: date | None = None) -> dict[str, Any]:
     user_prompt = build_morning_user_prompt(ctx)
     synth = run_morning_synthesize(ctx, user_prompt)
     eval_result = synth.get("eval") or {}
+    if needs_quality_retry(eval_result):
+        retry = run_morning_synthesize(ctx, user_prompt)
+        if retry.get("raw"):
+            retry_eval = retry.get("eval") or {}
+            if len(retry_eval.get("missing_codes") or []) <= len(eval_result.get("missing_codes") or []):
+                synth = retry
+                eval_result = retry_eval
+
     raw = synth.get("raw") or ""
     model = synth.get("model") or ""
     err = synth.get("error") or ""
@@ -86,19 +97,25 @@ def run_morning_ai(*, on_date: date | None = None) -> dict[str, Any]:
         "ai_error": err or "",
         "missing_codes": missing,
         "truncated_suspected": bool(eval_result.get("truncated_suspected")),
+        "critical_missing": bool(eval_result.get("critical_missing")),
         "ai_duration_ms": synth.get("duration_ms"),
-        "synthesize": {"ok": not missing, "mode": synth.get("mode")},
+        "synthesize": {
+            "ok": not missing,
+            "mode": synth.get("mode"),
+            "shards": synth.get("shards") or [],
+        },
     }
     out_path = _AI_DIR / f"morning_{cal.isoformat()}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(out_path, json.dumps(payload, ensure_ascii=False, indent=2))
     return {
-        "outcome": "ok" if not err else "warn",
+        "outcome": "ok" if not err and not eval_result.get("critical_missing") else "warn",
         "path": str(out_path),
         "missing_codes": missing,
         "model": model,
         "ai_duration_ms": synth.get("duration_ms"),
         "total_duration_ms": int((time.monotonic() - t0) * 1000),
+        "synthesize_mode": synth.get("mode"),
     }
 
 

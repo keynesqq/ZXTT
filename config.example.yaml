@@ -91,11 +91,15 @@ news:
 
 # 22 点晚间管线（详见 docs/evening-config.md）
 morning:
-  sla_sec: 120
+  sla_sec: 180
   llm_timeout_sec: 110
   wait_auction_max_sec: 15
   llm_max_tokens: 8000
   on_ai_fail: error
+  synthesize_mode: sharded
+  synthesize_workers: 4
+  synthesize_fallback_monolithic: false
+  shard_max_stocks: 12
 
 midday:
   feeds_digest_workers: 8

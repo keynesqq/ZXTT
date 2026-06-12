@@ -14,6 +14,7 @@ from morning.checks import build_checks, load_evening_ai, load_evening_expectati
 from morning.evening_ref import merge_evening_into_row, stock_tier
 from morning.health import build_health
 from morning.pre_format import format_stock_prompt_line
+from quote.query_cache import load_quote_query_cache
 
 _CTX_DIR = DATA_DIR / "morning_context"
 _TREND = DATA_DIR / "auction_trend_{d}.json"
@@ -59,6 +60,17 @@ def build_morning_context(
     evening_summary = (evening_ai.get("summary") or "").strip()
     evening_expectations = load_evening_expectations(calendar_date)
     exp_stocks = evening_expectations.get("stocks") or {}
+    iso = calendar_date.isoformat()
+
+    quote_data = load_quote_query_cache(on_date=calendar_date) or {}
+    if not quote_data.get("quotes") and prev_td:
+        quote_data = load_quote_query_cache(on_date=prev_td) or quote_data
+    structure = quote_data.get("structure") or {}
+    group_order = [
+        str(g.get("name")).strip()
+        for g in (structure.get("groups") or [])
+        if isinstance(g, dict) and str(g.get("name") or "").strip()
+    ]
 
     stocks_prompt: list[dict[str, Any]] = []
     for row in checks.get("rows") or []:
@@ -70,6 +82,7 @@ def build_morning_context(
             {
                 "code": merged.get("code"),
                 "name": merged.get("name"),
+                "groups": list(merged.get("groups") or []),
                 "stance_hint": merged.get("primary_stance"),
                 "tier": tier,
                 "prompt_line": line,
@@ -100,12 +113,29 @@ def build_morning_context(
         "schema_version": 1,
         "slot": "morning",
         "session_label": "集合竞价结束",
+        "group_order": group_order,
         "meta": {
-            "calendar_date": calendar_date.isoformat(),
+            "calendar_date": iso,
             "context_as_of": now_iso(),
             "code_count": len(stocks_prompt),
             "point_count": auction.get("point_count"),
             "evening_summary": evening_summary,
+            "paths": {
+                "auction_trend": f"data/auction_trend_{iso}.json",
+                "auction_series": f"data/auction_series_{iso}.json",
+                "morning_pre": f"data/morning_pre/{iso}.json",
+                "morning_checks": f"data/morning_checks/{iso}.json",
+                "quote": f"data/quote_query_{iso}.json",
+                "announcement": f"data/announcement_query_{iso}.json",
+                "news": f"data/news_query_{iso}.json",
+                "expectations": f"data/expectations/{iso}.json",
+                "evening_ai_prev": f"data/scheduled_ai/evening_{prev_td.isoformat()}.json"
+                if prev_td
+                else "",
+                "evening_baseline_prev": f"data/evening_baseline/{prev_td.isoformat()}.json"
+                if prev_td
+                else "",
+            },
         },
         "evening_expectations": evening_expectations,
         "morning_pre": morning_pre,
@@ -119,8 +149,9 @@ def build_morning_context(
                 "【目标】9:30起前30分钟纪律；对照 [昨晚结构化预期] 核对，无 9:15 新证据勿推翻昨晚结论\n"
                 "【我的】【想买的】推送块须逐只覆盖 tier0 列表每一只，不可遗漏。\n"
                 "素材=refresh 且列有新素材标题时，正文须引用该标题，禁止写「无新公告/资讯」。\n"
+                "判定词仅用核对表六档枚举，禁止自造变体；tier0 有 discipline/9:25核对须落地为条件句。\n"
                 "我的/想买的：短评2-4句；highlight升格短评；其余默认一句。\n"
-                "正文禁止（我的）（想买的）等分组前缀；禁止 verdict 行。"
+                "摘要不写【9:15素材】；正文禁止（我的）（想买的）前缀与末尾 verdict 行；禁止 ## 正式报告 标题。"
             ),
             "stocks": stocks_prompt,
         },

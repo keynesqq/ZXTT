@@ -12,7 +12,12 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "packages"))
 
-from morning.checks import build_checks, match_verdict
+from morning.checks import (
+    build_checks,
+    checks_summary_display_segments,
+    format_checks_summary_prompt,
+    match_verdict,
+)
 from morning.feeds_fingerprint import decide_feeds_status
 from morning.feeds_merge import merge_feeds
 from morning.health import build_health
@@ -89,6 +94,106 @@ class MorningChecksTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["verdict"], "符合")
         self.assertEqual(rows[0]["code"], "600519")
+
+
+class MorningGroupsTest(unittest.TestCase):
+    def test_shard_specs_split_large_group(self):
+        from morning.groups import build_shard_specs, stocks_for_shard
+
+        ctx = {
+            "group_order": ["跌幅达到预期重点关注"],
+            "prompt": {
+                "stocks": [
+                    {"code": f"{i:06d}", "groups": ["跌幅达到预期重点关注"]}
+                    for i in range(15)
+                ]
+            },
+        }
+        specs = build_shard_specs(ctx)
+        self.assertEqual(len(specs), 2)
+        self.assertEqual(len(stocks_for_shard(ctx["prompt"]["stocks"], specs[0][0])), 12)
+        self.assertEqual(len(stocks_for_shard(ctx["prompt"]["stocks"], specs[1][0])), 3)
+
+    def test_shard_prompt_scoped_rows(self):
+        ctx = {
+            "meta": {"context_as_of": "2026-06-12 09:25:06", "evening_summary": "摘要"},
+            "morning_pre": {"summary": {"refresh": 0, "reuse": 1, "no_new": 0, "failed": 0}},
+            "checks": {
+                "rows": [
+                    {
+                        "code": "600519",
+                        "name": "茅台",
+                        "groups": ["我的"],
+                        "primary_stance": "holding",
+                        "expected_open": "偏高开",
+                        "end_gap": 0.2,
+                        "shape_after_920": "震荡",
+                        "verdict": "部分符合",
+                        "pre_status": "reuse",
+                    },
+                    {
+                        "code": "000021",
+                        "name": "深科技",
+                        "groups": ["想买的"],
+                        "primary_stance": "candidate",
+                        "expected_open": "偏低开",
+                        "end_gap": 3.0,
+                        "shape_after_920": "探底回升",
+                        "verdict": "不符合",
+                        "pre_status": "reuse",
+                    },
+                ]
+            },
+            "open_market": {},
+            "evening_expectations": {},
+            "prompt": {
+                "priority_instructions": "",
+                "stocks": [
+                    {"code": "600519", "name": "茅台", "groups": ["我的"], "stance_hint": "holding", "tier": "tier0"},
+                    {"code": "000021", "name": "深科技", "groups": ["想买的"], "stance_hint": "candidate", "tier": "tier0"},
+                ],
+            },
+            "group_order": ["我的", "想买的"],
+        }
+        from morning.prompt_build import build_morning_shard_prompt
+
+        holding_prompt = build_morning_shard_prompt(ctx, "我的")
+        self.assertIn("600519", holding_prompt)
+        self.assertNotIn("000021", holding_prompt)
+        self.assertIn("[核对表·本批]", holding_prompt)
+
+
+class MorningChecksSummaryTest(unittest.TestCase):
+    def test_counts_from_rows_when_summary_missing(self):
+        checks = {
+            "rows": [
+                {"verdict": "不符合", "highlight": True},
+                {"verdict": "不符合", "highlight": False},
+                {"verdict": "符合", "highlight": False},
+            ]
+        }
+        prompt_line = format_checks_summary_prompt(checks)
+        self.assertIn("不符合2只", prompt_line)
+        self.assertIn("符合1只", prompt_line)
+        segs = checks_summary_display_segments(checks)
+        self.assertIn("不符合 2", segs)
+        self.assertIn("需关注 1", segs)
+
+    def test_env_strip_summary_without_open_market(self):
+        html_text = build_morning_page(
+            {
+                "trade_date": "2026-06-12",
+                "session_label": "集合竞价结束",
+                "checks": {"summary": {"不符合": 3, "highlight": 2}, "rows": []},
+                "open_market": {},
+                "ai_ok": False,
+                "ai_summary_raw": "",
+                "ai_body_raw": "",
+            }
+        )
+        self.assertIn("env-strip", html_text)
+        self.assertIn("env-chk", html_text)
+        self.assertIn("不符合 3", html_text)
 
 
 class MorningFeedsTest(unittest.TestCase):
@@ -271,6 +376,32 @@ class MorningPromptTest(unittest.TestCase):
         self.assertIn("[推送 tier0 须逐只覆盖]", prompt)
         self.assertIn("000021 深科技", prompt)
 
+    def test_user_prompt_includes_prev_limit_and_check_summary(self):
+        ctx = {
+            "meta": {"context_as_of": "2026-06-12 09:25:06", "calendar_date": "2026-06-12"},
+            "morning_pre": {"summary": {"refresh": 0, "reuse": 1, "no_new": 0, "failed": 0}},
+            "checks": {
+                "summary": {"不符合": 5, "超预期偏强": 2, "highlight": 7},
+                "rows": [],
+            },
+            "open_market": {
+                "pool_hint": "维持仓位",
+                "prev_limit_count": 69,
+                "prev_limit_avg_pct": 1.18,
+                "prev_limit_up": 38,
+                "prev_limit_down": 30,
+                "prev_limit_premium_3pct": 27,
+                "index_open_gaps": [{"name": "上证指数", "open_gap_pct": 0.77}],
+            },
+            "evening_expectations": {},
+            "prompt": {"priority_instructions": "", "stocks": []},
+        }
+        prompt = build_morning_user_prompt(ctx)
+        self.assertIn("昨涨停今开", prompt)
+        self.assertIn("核对统计", prompt)
+        self.assertIn("不符合5只", prompt)
+        self.assertIn("上证指数", prompt)
+
 
 class MorningHealthTest(unittest.TestCase):
     def test_health_brief_uses_morning_data_only(self):
@@ -362,6 +493,31 @@ class MorningHtmlTest(unittest.TestCase):
         self.assertNotIn("9:15 素材", html_text)
         self.assertNotIn("观点:深科技：测试", html_text)
         self.assertNotIn("核对表", html_text)
+
+    def test_env_strip_shows_check_summary(self):
+        html_text = build_morning_page(
+            {
+                "trade_date": "2026-06-12",
+                "context_as_of": "2026-06-12 09:25:06",
+                "session_label": "集合竞价结束",
+                "checks": {
+                    "summary": {"不符合": 12, "超预期偏强": 3, "highlight": 8},
+                    "rows": [],
+                },
+                "open_market": {
+                    "prev_limit_count": 69,
+                    "prev_limit_avg_pct": 1.18,
+                    "prev_limit_premium_3pct": 27,
+                    "index_open_gaps": [{"name": "上证指数", "open_gap_pct": 0.77}],
+                },
+                "ai_ok": True,
+                "ai_summary_raw": "【操作】观望。",
+                "ai_body_raw": "",
+            }
+        )
+        self.assertIn("env-chk", html_text)
+        self.assertIn("不符合 12", html_text)
+        self.assertIn("昨涨停均涨", html_text)
 
     def test_health_bar_shown_when_brief_present(self):
         html_text = build_morning_page(

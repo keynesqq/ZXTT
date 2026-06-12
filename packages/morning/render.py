@@ -47,6 +47,10 @@ def run_morning_render(*, on_date: date | None = None) -> dict[str, Any]:
     }
     atomic_write_text(_LAST, json.dumps(last, ensure_ascii=False, indent=2))
 
+    from report.archive import save_report_archive
+
+    save_report_archive("morning", cal, report_path=str(main_path))
+
     return {
         "outcome": "ok",
         "path": str(main_path),

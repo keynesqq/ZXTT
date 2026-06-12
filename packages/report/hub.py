@@ -119,11 +119,14 @@ def aggregate_hub(day: date) -> dict[str, Any]:
         slots[slot_id] = _aggregate_slot(
             slot_id, label, run_dir, html_name, view_day=day
         )
+    from report.system_status import aggregate_system_status
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "trade_date": day.isoformat(),
         "updated_at": now_iso(),
         "slots": slots,
+        "services": aggregate_system_status(day, slots),
     }
 
 

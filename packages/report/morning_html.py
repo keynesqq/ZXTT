@@ -5,6 +5,7 @@ import html
 import re
 from typing import Any
 
+from morning.checks import checks_summary_display_segments
 from report.md_html import extract_push_section_body, markdown_to_html, push_summary_to_html
 
 _STOCK_HEAD = re.compile(
@@ -135,6 +136,7 @@ a { color: var(--accent); text-decoration: none; }
   flex: 1 1 100%; margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border);
   color: #c8d4e6; font-size: .84rem; line-height: 1.55;
 }
+.env-seg.env-chk { border-color: rgba(245,166,35,.28); color: #ffd08a; }
 
 table.data { width: 100%; border-collapse: collapse; font-size: .88rem; }
 table.data th, table.data td {
@@ -341,14 +343,24 @@ def _operation_hint(summary_raw: str) -> str:
     return first
 
 
-def _env_strip_html(open_m: dict[str, Any], rc: dict[str, Any]) -> str:
-    if not open_m:
-        return ""
+def _env_strip_html(open_m: dict[str, Any] | None, rc: dict[str, Any]) -> str:
+    market = open_m if isinstance(open_m, dict) else {}
     segs_html: list[str] = []
-    hint = str(open_m.get("pool_hint") or open_m.get("position_hint") or "").strip()
+    hint = str(market.get("pool_hint") or market.get("position_hint") or "").strip()
     if hint:
         segs_html.append(f'<span class="env-seg">{html.escape(hint)}</span>')
-    for g in open_m.get("index_open_gaps") or []:
+    prev_n = market.get("prev_limit_count")
+    if prev_n is not None:
+        avg = market.get("prev_limit_avg_pct")
+        prem = market.get("prev_limit_premium_3pct")
+        if isinstance(avg, (int, float)):
+            cls = " up" if avg > 0 else " down" if avg < 0 else ""
+            segs_html.append(
+                f'<span class="env-seg{cls}">昨涨停均涨 {avg:+.2f}%</span>'
+            )
+        if prem is not None:
+            segs_html.append(f'<span class="env-seg">溢价≥3% {int(prem)}只</span>')
+    for g in (market.get("index_open_gaps") or []):
         if not isinstance(g, dict):
             continue
         name = str(g.get("name") or g.get("symbol") or "")
@@ -363,14 +375,31 @@ def _env_strip_html(open_m: dict[str, Any], rc: dict[str, Any]) -> str:
     op_hint = _operation_hint(str(rc.get("ai_summary_raw") or ""))
     if op_hint:
         segs_html.append(f'<span class="env-seg env-op">{html.escape(op_hint)}</span>')
-    if not segs_html:
+
+    check_segs = checks_summary_display_segments(rc.get("checks") or {})
+    check_html = ""
+    if check_segs:
+        check_bits = "".join(
+            f'<span class="env-seg env-chk">{html.escape(s)}</span>' for s in check_segs
+        )
+        check_html = (
+            f'<div class="env-row"><span class="env-label">核对</span>'
+            f'<div class="env-segments">{check_bits}</div></div>'
+        )
+
+    if not segs_html and not check_html:
         return ""
     session = html.escape(str(rc.get("session_label") or "集合竞价结束"))
+    gap_row = ""
+    if segs_html:
+        gap_row = (
+            f'<div class="env-row"><span class="env-label">缺口</span>'
+            f'<div class="env-segments">{"".join(segs_html)}</div></div>'
+        )
     return (
         f'<div class="env-strip"><div class="env-strip-head">'
         f'竞价大盘 <span class="env-slot">{session}</span></div>'
-        f'<div class="env-row"><span class="env-label">缺口</span>'
-        f'<div class="env-segments">{"".join(segs_html)}</div></div></div>'
+        f"{gap_row}{check_html}</div>"
     )
 
 

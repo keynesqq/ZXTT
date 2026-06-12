@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -233,7 +234,10 @@ def build_checks(
         "summary": {
             "超预期偏强": sum(1 for r in rows if r.get("verdict") == "超预期偏强"),
             "超预期偏弱": sum(1 for r in rows if r.get("verdict") == "超预期偏弱"),
+            "符合": sum(1 for r in rows if r.get("verdict") == "符合"),
+            "部分符合": sum(1 for r in rows if r.get("verdict") == "部分符合"),
             "不符合": sum(1 for r in rows if r.get("verdict") == "不符合"),
+            "数据缺失": sum(1 for r in rows if r.get("verdict") == "数据缺失"),
             "highlight": sum(1 for r in rows if r.get("highlight")),
         },
     }
@@ -247,9 +251,74 @@ def save_checks(payload: dict[str, Any], day: date) -> Path:
     return path
 
 
+_CHECKS_SUMMARY_ORDER = (
+    "超预期偏强",
+    "超预期偏弱",
+    "不符合",
+    "部分符合",
+    "符合",
+    "数据缺失",
+)
+
+
+def checks_summary_counts(checks: dict[str, Any]) -> dict[str, int]:
+    summary = checks.get("summary") or {}
+    rows = checks.get("rows") or []
+    out: dict[str, int] = {}
+
+    if summary:
+        for key in _CHECKS_SUMMARY_ORDER:
+            val = summary.get(key)
+            if val:
+                out[key] = int(val)
+        hl = summary.get("highlight")
+        if hl:
+            out["highlight"] = int(hl)
+        if out:
+            return out
+
+    if not rows:
+        return {}
+    verdict_counts = Counter(str(r.get("verdict") or "") for r in rows if r.get("verdict"))
+    for key in _CHECKS_SUMMARY_ORDER:
+        if verdict_counts.get(key):
+            out[key] = verdict_counts[key]
+    hl_n = sum(1 for r in rows if r.get("highlight"))
+    if hl_n:
+        out["highlight"] = hl_n
+    return out
+
+
+def format_checks_summary_prompt(checks: dict[str, Any]) -> str:
+    counts = checks_summary_counts(checks)
+    if not counts:
+        return ""
+    bits: list[str] = []
+    for key in _CHECKS_SUMMARY_ORDER:
+        if counts.get(key):
+            bits.append(f"{key}{counts[key]}只")
+    if counts.get("highlight"):
+        bits.append(f"需关注{counts['highlight']}只")
+    return " · ".join(bits)
+
+
+def checks_summary_display_segments(checks: dict[str, Any]) -> list[str]:
+    counts = checks_summary_counts(checks)
+    segs: list[str] = []
+    for key in _CHECKS_SUMMARY_ORDER:
+        if counts.get(key):
+            segs.append(f"{key} {counts[key]}")
+    if counts.get("highlight"):
+        segs.append(f"需关注 {counts['highlight']}")
+    return segs
+
+
 __all__ = [
     "build_checks",
     "save_checks",
     "expected_open_for_code",
     "match_verdict",
+    "checks_summary_counts",
+    "format_checks_summary_prompt",
+    "checks_summary_display_segments",
 ]

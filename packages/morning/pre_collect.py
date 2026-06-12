@@ -88,6 +88,11 @@ def run_morning_pre(
         "finished_at": now_iso(),
         "code_count": len(codes),
         "code_source": code_src,
+        "source_paths": {
+            "quote": code_src if str(code_src).startswith("data/") else f"data/quote_query_{cal.isoformat()}.json",
+            "announcement": f"data/announcement_query_{cal.isoformat()}.json",
+            "news": f"data/news_query_{cal.isoformat()}.json",
+        },
         "prev_baseline_date": prev_td.isoformat() if prev_td else "",
         "by_code": by_code,
         "summary": summary,

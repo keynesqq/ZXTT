@@ -463,6 +463,20 @@ def cmd_hub(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reproduce(args: argparse.Namespace) -> int:
+    from report.archive import reproduce_report
+
+    cal = _parse_date(args.date) or date.today()
+    result = reproduce_report(
+        args.slot,
+        cal,
+        phase=args.phase,
+        force=args.force,
+    )
+    print(result)
+    return 0 if result.get("outcome") in ("ok", "warn", "skip") else 1
+
+
 def cmd_morning(args: argparse.Namespace) -> int:
     phase = (args.phase or "report").strip().lower()
     if phase == "pre":
@@ -578,6 +592,17 @@ def main() -> None:
     hub_mod.add_argument("--date", default=None)
     hub_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
 
+    reproduce_mod = sub.add_parser("reproduce", help="报告复现 · 校验归档或按层重跑")
+    reproduce_mod.add_argument("--slot", required=True, choices=("morning", "midday", "evening"))
+    reproduce_mod.add_argument(
+        "--phase",
+        default="verify",
+        choices=("verify", "snapshot", "render", "preprocess", "ai", "full"),
+        help="verify=校验缺失; snapshot=写归档清单; render=仅重渲染; preprocess/ai/full=逐层重跑",
+    )
+    reproduce_mod.add_argument("--force", action="store_true")
+    reproduce_mod.add_argument("--date", default=None)
+
     morning_mod = sub.add_parser("morning", help="早盘集合竞价报告 · pre=9:15采集 / 默认=报告档")
     morning_mod.add_argument("--phase", default="report", choices=("pre", "report"))
     morning_mod.add_argument("--force", action="store_true")
@@ -638,6 +663,8 @@ def main() -> None:
         raise SystemExit(cmd_midday(args))
     if args.cmd == "hub":
         raise SystemExit(cmd_hub(args))
+    if args.cmd == "reproduce":
+        raise SystemExit(cmd_reproduce(args))
     if args.cmd == "morning":
         raise SystemExit(cmd_morning(args))
     if args.cmd == "collect":

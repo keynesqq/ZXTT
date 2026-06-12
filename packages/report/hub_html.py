@@ -51,6 +51,7 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
 .badge.running { background: rgba(79,140,255,.2); color: #a8c7ff; }
 .badge.ok { background: rgba(62,207,142,.15); color: #9ee8c0; }
 .badge.fail { background: rgba(240,82,82,.15); color: #ffb4b4; }
+.badge.warn { background: rgba(230,184,77,.15); color: #f0d48a; }
 .report-body { border-top: 1px solid var(--border); background: var(--bg); }
 .report-frame {
   display: block; width: 100%; border: none;
@@ -66,6 +67,48 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
 }
 .report-empty .empty-bar > div { height: 100%; background: var(--accent); transition: width .3s; }
 .footer { margin-top: 24px; font-size: .8rem; color: var(--muted); }
+.status-dash {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 20px;
+}
+.dash-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin-bottom: 14px;
+}
+.dash-title { font-size: 1rem; font-weight: 700; margin: 0; }
+.dash-updated { font-size: .75rem; color: var(--muted); margin-left: auto; }
+.dash-groups {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+}
+.dash-group {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px;
+}
+.dash-group-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: .82rem; font-weight: 700;
+}
+.dash-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dash-item {
+  display: grid; grid-template-columns: 8px 1fr; gap: 8px; align-items: start;
+  font-size: .78rem;
+}
+.dash-dot {
+  width: 8px; height: 8px; border-radius: 50%; margin-top: 5px;
+  background: #4a5a72;
+}
+.dash-dot.ok { background: #3ecf8e; }
+.dash-dot.warn { background: #e6b84d; }
+.dash-dot.fail { background: #f05252; }
+.dash-dot.running { background: var(--accent); animation: dash-pulse 1.2s ease-in-out infinite; }
+.dash-dot.idle { background: #4a5a72; }
+@keyframes dash-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.dash-item-label { font-weight: 600; color: var(--text); }
+.dash-item-detail { color: var(--muted); font-size: .72rem; margin-top: 1px; }
+.dash-item-bar {
+  grid-column: 2; height: 3px; background: #243044; border-radius: 2px; overflow: hidden; margin-top: 2px;
+}
+.dash-item-bar > div { height: 100%; background: var(--accent); transition: width .3s; }
 """
 
 _HUB_JS = """
@@ -77,11 +120,19 @@ function statusClass(st) {
   if (st === "running") return "running";
   if (st === "ok") return "ok";
   if (st === "fail") return "fail";
+  if (st === "warn") return "warn";
   return "idle";
 }
-function statusLabel(st) {
+function dashStatusLabel(st) {
+  const map = { running: "运行中", ok: "正常", fail: "失败", warn: "部分完成", idle: "未运行" };
+  return map[st] || st || "未运行";
+}
+function reportStatusLabel(st) {
   const map = { running: "生成中", ok: "已完成", fail: "失败", idle: "未运行" };
   return map[st] || st || "未运行";
+}
+function statusLabel(st) {
+  return reportStatusLabel(st);
 }
 function resizeReportFrame(frame) {
   if (!frame || frame.hidden) return;
@@ -165,12 +216,70 @@ function renderSlot(slot, data) {
   }
   loadReportFrame(el);
 }
+function renderServices(services) {
+  const root = document.getElementById("status-dash");
+  if (!root || !services) return;
+  const overall = services.overall || "idle";
+  const badge = root.querySelector(".dash-overall");
+  if (badge) {
+    badge.className = "badge dash-overall " + statusClass(overall);
+    badge.textContent = dashStatusLabel(overall);
+  }
+  const upd = root.querySelector(".dash-updated");
+  if (upd) {
+    const parts = [];
+    if (services.updated_at) parts.push("刷新 " + services.updated_at);
+    if (services.collect_updated_at) parts.push("采集 " + services.collect_updated_at);
+    upd.textContent = parts.join(" · ");
+  }
+  (services.groups || []).forEach((group) => {
+    const box = root.querySelector('[data-group="' + group.id + '"]');
+    if (!box) return;
+    const gb = box.querySelector(".group-badge");
+    if (gb) {
+      gb.className = "badge group-badge " + statusClass(group.status || "idle");
+      gb.textContent = dashStatusLabel(group.status || "idle");
+    }
+    const list = box.querySelector(".dash-items");
+    if (!list) return;
+    list.innerHTML = "";
+    (group.items || []).forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "dash-item";
+      const st = item.status || "idle";
+      const dot = document.createElement("span");
+      dot.className = "dash-dot " + statusClass(st);
+      li.appendChild(dot);
+      const body = document.createElement("div");
+      const label = document.createElement("div");
+      label.className = "dash-item-label";
+      label.textContent = item.label || item.id || "";
+      body.appendChild(label);
+      const detail = document.createElement("div");
+      detail.className = "dash-item-detail";
+      detail.textContent = item.detail || "";
+      body.appendChild(detail);
+      if (st === "running" && item.progress_pct != null) {
+        const bar = document.createElement("div");
+        bar.className = "dash-item-bar";
+        const inner = document.createElement("div");
+        const pct = Math.max(0, Math.min(100, Number(item.progress_pct) || 0));
+        inner.style.width = pct + "%";
+        bar.appendChild(inner);
+        body.appendChild(bar);
+      }
+      li.appendChild(body);
+      list.appendChild(li);
+    });
+  });
+}
 function applyHub(data) {
   if (!data) return;
   window.HUB_STATUS = data;
   const td = document.getElementById("trade-date");
   if (td) td.textContent = data.trade_date || "";
   document.body.dataset.tradeDate = data.trade_date || "";
+  renderServices(data.services);
   const slots = data.slots || {};
   ["evening_prev", "morning", "midday", "evening"].forEach((id) => renderSlot(id, slots[id]));
 }
@@ -213,9 +322,56 @@ pollHub();
 """
 
 
+def _build_dash_group(group: dict[str, Any]) -> str:
+    gid = html.escape(str(group.get("id") or ""))
+    label = html.escape(str(group.get("label") or ""))
+    gst = group.get("status") or "idle"
+    badge_cls = gst if gst in ("running", "ok", "fail", "warn") else "idle"
+    item_rows: list[str] = []
+    for item in group.get("items") or []:
+        st = item.get("status") or "idle"
+        dot_cls = st if st in ("running", "ok", "fail", "warn") else "idle"
+        pct = item.get("progress_pct")
+        bar = ""
+        if st == "running" and pct is not None:
+            pw = max(0, min(100, int(pct)))
+            bar = f'<div class="dash-item-bar"><div style="width:{pw}%"></div></div>'
+        item_rows.append(
+            f"""<li class="dash-item">
+  <span class="dash-dot {html.escape(dot_cls)}"></span>
+  <div>
+    <div class="dash-item-label">{html.escape(str(item.get("label") or ""))}</div>
+    <div class="dash-item-detail">{html.escape(str(item.get("detail") or ""))}</div>
+    {bar}
+  </div>
+</li>"""
+        )
+    items_html = "\n".join(item_rows) or '<li class="dash-item"><span class="dash-dot idle"></span><div><div class="dash-item-detail">无数据</div></div></li>'
+    return f"""<section class="dash-group" data-group="{gid}">
+  <div class="dash-group-head">
+    <span>{label}</span>
+    <span class="badge group-badge {html.escape(badge_cls)}">{html.escape(str(gst))}</span>
+  </div>
+  <ul class="dash-items">{items_html}</ul>
+</section>"""
+
+
 def build_hub_page(hub: dict[str, Any]) -> str:
     trade_date = html.escape(str(hub.get("trade_date") or ""))
     boot = json.dumps(hub, ensure_ascii=False).replace("</", "<\\/")
+    services = hub.get("services") or {}
+    overall = services.get("overall") or "idle"
+    overall_cls = overall if overall in ("running", "ok", "fail", "warn") else "idle"
+    dash_parts = [
+        _build_dash_group(g) for g in (services.get("groups") or [])
+    ]
+    dash_groups = "\n".join(dash_parts)
+    upd_parts: list[str] = []
+    if services.get("updated_at"):
+        upd_parts.append(f"刷新 {services['updated_at']}")
+    if services.get("collect_updated_at"):
+        upd_parts.append(f"采集 {services['collect_updated_at']}")
+    dash_updated = html.escape(" · ".join(upd_parts))
     items: list[str] = []
     for slot_id, label, schedule in _SLOT_ORDER:
         data = (hub.get("slots") or {}).get(slot_id) or {}
@@ -254,6 +410,14 @@ def build_hub_page(hub: dict[str, Any]) -> str:
 <div class="wrap">
   <h1>ZXTT 作战卡</h1>
   <p class="sub">交易日 <strong id="trade-date">{trade_date}</strong> · 点击标题展开对应报告</p>
+  <section class="status-dash" id="status-dash">
+    <div class="dash-head">
+      <h2 class="dash-title">系统状态</h2>
+      <span class="badge dash-overall {html.escape(overall_cls)}">{html.escape(str(overall))}</span>
+      <span class="dash-updated">{dash_updated}</span>
+    </div>
+    <div class="dash-groups">{dash_groups}</div>
+  </section>
   <ul class="report-list">{list_html}</ul>
   <p class="footer">自动刷新状态 · 展开后内嵌完整报告（高度随内容）</p>
 </div>
