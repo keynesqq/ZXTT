@@ -13,6 +13,21 @@ _BARE_SECTION = re.compile(
     r"^(我的|想买的|观察|其它|重点|高度关注|跌幅达到预期重点关注)$"
 )
 _GLOBAL_LABELS = frozenset({"环境", "仓位", "操作", "超预期", "9:15素材"})
+PUSH_HIDDEN_SECTIONS = frozenset({"9:15素材"})
+PUSH_SECTION_ORDER = (
+    "环境",
+    "仓位",
+    "超预期",
+    "操作",
+    "我的",
+    "想买的",
+    "观察",
+    "其它",
+    "重点",
+    "高度关注",
+    "跌幅达到预期重点关注",
+)
+_LIST_BULLET = re.compile(r"^[-*]\s+(.*)$", re.MULTILINE)
 
 
 def _extract_analysis_time(text: str) -> tuple[str, str]:
@@ -41,6 +56,45 @@ def _normalize_bare_section_lines(text: str) -> str:
         else:
             out.append(line)
     return "\n".join(out).strip()
+
+
+def clean_push_line(line: str) -> str:
+    s = (line or "").strip().lstrip("-•* ").strip()
+    return re.sub(r"\*\*", "", s).strip()
+
+
+def split_push_items(body: str) -> list[str]:
+    body = (body or "").strip()
+    if not body or body in ("无", "（无）", "---"):
+        return []
+    has_bullets = any(_LIST_BULLET.match(ln.strip()) for ln in body.splitlines() if ln.strip())
+    if has_bullets:
+        items: list[str] = []
+        for line in body.splitlines():
+            m = _LIST_BULLET.match(line.strip())
+            if not m:
+                continue
+            content = clean_push_line(m.group(1))
+            if content and content != "---":
+                items.append(content)
+        return items
+    items = []
+    for line in body.splitlines():
+        line = clean_push_line(line)
+        if not line or line == "---":
+            continue
+        for seg in re.split(r"[；;]", line):
+            seg = seg.strip()
+            if seg:
+                items.append(seg)
+    return items
+
+
+def order_push_sections(sections: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    order_idx = {name: i for i, name in enumerate(PUSH_SECTION_ORDER)}
+    default = len(PUSH_SECTION_ORDER)
+    kept = [(label, body) for label, body in sections if label not in PUSH_HIDDEN_SECTIONS]
+    return sorted(kept, key=lambda item: order_idx.get(item[0], default))
 
 
 def _section_items(label: str, body: str) -> list[str]:
@@ -78,7 +132,7 @@ def parse_push_summary_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
         items = _section_items(label, body)
         if items or label in _GLOBAL_LABELS:
             sections.append((label, "\n".join(items) if items else body.strip()))
-    return analysis_time, sections
+    return analysis_time, order_push_sections(sections)
 
 
 def merge_push_summary_parts(*parts: str) -> str:
@@ -106,7 +160,8 @@ def merge_push_summary_parts(*parts: str) -> str:
                 merged[label].extend(items)
 
     lines: list[str] = []
-    for label in order:
+    for label in order_push_sections([(lbl, "") for lbl in order]):
+        label = label[0]
         if label in _GLOBAL_LABELS:
             text = merged[label][0] if merged[label] else "无"
             lines.append(f"【{label}】{text}")
@@ -122,4 +177,12 @@ def merge_push_summary_parts(*parts: str) -> str:
     return "\n".join(lines).strip()
 
 
-__all__ = ["merge_push_summary_parts", "parse_push_summary_sections"]
+__all__ = [
+    "PUSH_HIDDEN_SECTIONS",
+    "PUSH_SECTION_ORDER",
+    "clean_push_line",
+    "merge_push_summary_parts",
+    "order_push_sections",
+    "parse_push_summary_sections",
+    "split_push_items",
+]
