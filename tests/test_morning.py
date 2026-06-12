@@ -177,6 +177,7 @@ class MorningHtmlTest(unittest.TestCase):
         self.assertIn("竞价大盘", html_text)
         self.assertIn("正式报告", html_text)
         self.assertIn("check-heading-inline", html_text)
+        self.assertNotIn("stock-fact-inline", html_text)
         self.assertNotIn("check-strip", html_text)
         self.assertIn("偏低开", html_text)
         self.assertNotIn("（想买的）", html_text)

@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 from report.md_html import markdown_to_html, push_summary_to_html
-from report.stock_fact_strip import inject_stock_fact_strips, snapshot_rows_by_code
 
 _STOCK_HEAD = re.compile(
     r'(<summary class="stock-heading" id="stock-(\d{6})"[^>]*>)(.*?)(</summary>)',
@@ -216,9 +215,6 @@ details.stock-block[open] > summary.stock-heading::after { content: "收起 ▾"
 details.stock-block > summary.stock-heading:hover { background: var(--surface-3); }
 details.stock-block[open] > summary.stock-heading { border-radius: 8px 8px 0 0; }
 .prose summary .code { font-family: ui-monospace, monospace; color: var(--accent); margin-right: 6px; }
-.stock-fact-inline { font-size: .78rem; color: var(--muted); }
-.stock-fact-inline .fact-pct.up { color: var(--up); font-weight: 600; }
-.stock-fact-inline .fact-pct.down { color: var(--down); font-weight: 600; }
 .stock-body {
   margin: 0 0 0 4px; padding: 12px 14px 14px 16px;
   border-left: 2px solid var(--border); background: rgba(28,39,56,.45);
@@ -437,18 +433,6 @@ def _inject_checks_into_heading(prose_html: str, by_code: dict[str, dict[str, An
     return _STOCK_HEAD.sub(repl, prose_html)
 
 
-def _snapshot_rows_from_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "code": r.get("code"),
-            "name": r.get("name"),
-            "pct_chg": r.get("end_gap"),
-            "tags": [],
-        }
-        for r in rows
-    ]
-
-
 def _stock_blocks_by_code(html_text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for block in _STOCK_BLOCK.finditer(html_text or ""):
@@ -521,10 +505,8 @@ def _analysis_html(rc: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     if not rc.get("ai_ok"):
         msg = rc.get("ai_error") or "AI 未生成"
         return f'<div class="card alert-err">{html.escape(str(msg))}</div>'
-    snap_by_code = snapshot_rows_by_code(_snapshot_rows_from_checks(rows))
     chk_by_code = _checks_by_code(rows)
     prose = markdown_to_html(_clean_morning_body_text(rc.get("ai_body_raw") or ""), stock_body=True)
-    prose = inject_stock_fact_strips(prose, snap_by_code)
     prose = _inject_checks_into_heading(prose, chk_by_code)
     body = _grouped_prose_html(rc, prose)
     return f'<div class="card analysis-card"><div class="card-label">正式报告</div>{body}</div>'
