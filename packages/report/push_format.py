@@ -4,25 +4,27 @@ from __future__ import annotations
 import html
 import re
 
-_SECTION_ENV = re.compile(r"^【环境】\s*(.*)$")
-_SECTION_MY = re.compile(r"^【我的】\s*(.*)$")
-_SECTION_BUY = re.compile(r"^【想买的】\s*(.*)$")
-_SECTION_WATCH = re.compile(r"^【观察】\s*(.*)$")
-_SECTION_OTHER = re.compile(r"^【其它】\s*(.*)$")
-_SECTION_FOCUS = re.compile(r"^【重点】\s*(.*)$")
-_SECTION_ACTION = re.compile(r"^【操作】\s*(.*)$")
-_SECTION_POSITION = re.compile(r"^【仓位】\s*(.*)$")
-_TIME_LINE = re.compile(r"^\*\*分析时刻\*\*[：:]\s*(.+)$")
+from report.push_summary_merge import merge_push_summary_parts, parse_push_summary_sections
+
 _STOCK_SPLIT = re.compile(r"[、;]\s*(?=\d{6})")
 _STOCK_HEAD = re.compile(r"^(\d{6})\s*(.+)$")
-
-_TIER_SECTIONS = (
-    ("my", _SECTION_MY, "我的"),
-    ("buy", _SECTION_BUY, "想买的"),
-    ("watch", _SECTION_WATCH, "观察"),
-    ("other", _SECTION_OTHER, "其它"),
-    ("focus", _SECTION_FOCUS, "重点"),
-)
+_GLOBAL_LABELS = frozenset({"环境", "仓位", "操作", "超预期", "9:15素材"})
+_TIER_DISPLAY = {
+    "我的": "我 的",
+    "想买的": "想 买 的",
+    "观察": "观 察",
+    "其它": "其 它",
+    "重点": "重 点",
+}
+_TIER_COLORS = {
+    "我的": "#2980b9",
+    "想买的": "#27ae60",
+    "观察": "#d68910",
+    "其它": "#7f8c8d",
+    "重点": "#7f8c8d",
+    "高度关注": "#d68910",
+    "跌幅达到预期重点关注": "#c0392b",
+}
 
 
 def _esc(text: str) -> str:
@@ -72,166 +74,92 @@ def normalize_push_summary(text: str) -> str:
     return s.strip()
 
 
-def _parse_sections(text: str) -> dict[str, object]:
-    env = ""
-    action = ""
-    position = ""
-    time_line = ""
-    buckets: dict[str, list[str]] = {k: [] for k, _, _ in _TIER_SECTIONS}
-    mode: str | None = None
-
-    for raw in normalize_push_summary(text).splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-
-        m = _SECTION_ENV.match(line)
-        if m:
-            env = m.group(1).strip()
-            mode = None
-            continue
-
-        matched_tier = False
-        for key, pattern, _label in _TIER_SECTIONS:
-            m = pattern.match(line)
-            if m:
-                mode = key
-                tail = m.group(1).strip()
-                if tail and tail not in ("无", "（无）"):
-                    buckets[key].append(tail)
-                matched_tier = True
-                break
-        if matched_tier:
-            continue
-
-        m = _SECTION_ACTION.match(line)
-        if m:
-            action = m.group(1).strip()
-            mode = None
-            continue
-
-        m = _SECTION_POSITION.match(line)
-        if m:
-            position = m.group(1).strip()
-            mode = None
-            continue
-
-        m = _TIME_LINE.match(line)
-        if m:
-            time_line = m.group(1).strip()
-            mode = None
-            continue
-
-        if "分析时刻" in line:
-            time_line = re.sub(r"^\*+|\*+$", "", line.replace("分析时刻：", "").replace("分析时刻:", "")).strip()
-            mode = None
-            continue
-
-        if mode and mode in buckets:
-            if line in ("无", "（无）"):
-                mode = None
-                continue
-            buckets[mode].append(line.lstrip("-•* ").strip())
-            continue
-
-        if line.startswith(("⛔", "★", "·")):
-            buckets["focus"].append(line.lstrip("-• ").strip())
-            continue
-
-        if line.startswith(("-", "•", "*")):
-            content = line.lstrip("-•* ").strip()
-            if not env and not any(buckets.values()) and not action:
-                env = content
-            else:
-                buckets["focus"].append(content)
-            continue
-
-        if not env:
-            env = line
-        else:
-            buckets["focus"].append(line)
-
-    return {
-        "env": env,
-        "my": buckets["my"],
-        "buy": buckets["buy"],
-        "watch": buckets["watch"],
-        "other": buckets["other"],
-        "focus": buckets["focus"],
-        "action": action,
-        "position": position,
-        "time": time_line,
-    }
+def _render_global_block(chunks: list[str], label: str, body: str, *, slot: str) -> None:
+    if not body.strip():
+        return
+    if label == "环境":
+        chunks.append(
+            '<div style="margin-bottom:14px;padding:12px 14px;background:#f4f6f8;border-radius:8px;">'
+            '<div style="font-size:13px;font-weight:700;color:#666;letter-spacing:2px;margin-bottom:6px;">环 境</div>'
+            f'<div style="font-size:18px;font-weight:600;line-height:1.55;color:#222;">{_esc(body)}</div>'
+            "</div>"
+        )
+        return
+    if label == "仓位" and slot != "midday":
+        chunks.append(
+            '<div style="margin-bottom:14px;padding:12px 14px;background:#eef6ff;border-radius:8px;border:1px solid #c8dff7;">'
+            '<div style="font-size:13px;font-weight:700;color:#2980b9;letter-spacing:2px;margin-bottom:6px;">仓 位</div>'
+            f'<div style="font-size:18px;font-weight:600;line-height:1.55;color:#1a5276;">{_esc(body)}</div>'
+            "</div>"
+        )
+        return
+    if label == "操作":
+        chunks.append(
+            '<div style="margin-top:14px;padding:12px 14px;background:#fff8e6;border-radius:8px;border:1px solid #f0d78c;">'
+            '<div style="font-size:13px;font-weight:700;color:#b7950b;letter-spacing:2px;margin-bottom:6px;">操 作</div>'
+            f'<div style="font-size:18px;font-weight:600;line-height:1.55;color:#333;">{_esc(body)}</div>'
+            "</div>"
+        )
 
 
-def _render_tier_blocks_wechat(chunks: list[str], sec: dict[str, object]) -> None:
-    tier_defs = (
-        ("my", "我 的", "#2980b9"),
-        ("buy", "想 买 的", "#27ae60"),
-        ("watch", "观 察", "#d68910"),
-        ("other", "其 它", "#7f8c8d"),
-        ("focus", "重 点", "#7f8c8d"),
+def _render_stock_tier(chunks: list[str], label: str, body: str) -> None:
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip() and ln.strip() not in ("无", "（无）")]
+    if not lines:
+        return
+    color = _TIER_COLORS.get(label, "#7f8c8d")
+    display = _TIER_DISPLAY.get(label, label)
+    chunks.append(
+        f'<div style="font-size:13px;font-weight:700;color:{color};letter-spacing:2px;margin:14px 0 10px;">'
+        f"{_esc(display)}</div>"
     )
-    for key, label, color in tier_defs:
-        lines = sec.get(key) or []
-        if not lines:
-            continue
-        chunks.append(
-            f'<div style="font-size:13px;font-weight:700;color:{color};letter-spacing:2px;margin:14px 0 10px;">{label}</div>'
-        )
-        chunks.append(
-            f'<div style="margin:0 0 14px;padding:8px 6px 2px;background:#f8f9fb;border-radius:10px;">'
-        )
-        for line in lines:
-            for item in _split_stock_items(str(line)):
-                _render_stock_card(chunks, item, accent=color)
-        chunks.append("</div>")
-
-
-def _midday_action_text(sec: dict[str, object]) -> str:
-    action = str(sec.get("action") or "").strip()
-    position = str(sec.get("position") or "").strip()
-    if position and action:
-        return f"{position}\n{action}".strip()
-    return position or action
+    chunks.append(
+        '<div style="margin:0 0 14px;padding:8px 6px 2px;background:#f8f9fb;border-radius:10px;">'
+    )
+    for line in lines:
+        for item in _split_stock_items(line):
+            _render_stock_card(chunks, item, accent=color)
+    chunks.append("</div>")
 
 
 def format_wechat_push_html(summary: str, *, slot: str = "evening") -> str:
-    sec = _parse_sections(summary)
+    merged = merge_push_summary_parts(summary)
+    time_line, sections = parse_push_summary_sections(merged)
     chunks: list[str] = [
         '<div style="font-size:17px;line-height:1.75;color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;">'
     ]
 
-    env = str(sec["env"])
-    if env:
-        chunks.append(
-            '<div style="margin-bottom:14px;padding:12px 14px;background:#f4f6f8;border-radius:8px;">'
-            '<div style="font-size:13px;font-weight:700;color:#666;letter-spacing:2px;margin-bottom:6px;">环 境</div>'
-            f'<div style="font-size:18px;font-weight:600;line-height:1.55;color:#222;">{_esc(env)}</div>'
-            "</div>"
-        )
+    position = ""
+    action = ""
+    stock_sections: list[tuple[str, str]] = []
 
-    position = str(sec.get("position") or "")
-    if position and slot != "midday":
-        chunks.append(
-            '<div style="margin-bottom:14px;padding:12px 14px;background:#eef6ff;border-radius:8px;border:1px solid #c8dff7;">'
-            '<div style="font-size:13px;font-weight:700;color:#2980b9;letter-spacing:2px;margin-bottom:6px;">仓 位</div>'
-            f'<div style="font-size:18px;font-weight:600;line-height:1.55;color:#1a5276;">{_esc(position)}</div>'
-            "</div>"
-        )
+    for label, body in sections:
+        if label == "仓位":
+            position = body
+            if slot != "midday":
+                _render_global_block(chunks, label, body, slot=slot)
+            continue
+        if label == "操作":
+            action = body
+            continue
+        if label in _GLOBAL_LABELS:
+            _render_global_block(chunks, label, body, slot=slot)
+        else:
+            stock_sections.append((label, body))
 
-    _render_tier_blocks_wechat(chunks, sec)
+    for label, body in stock_sections:
+        _render_stock_tier(chunks, label, body)
 
-    action = _midday_action_text(sec) if slot == "midday" else str(sec["action"])
-    if action:
-        chunks.append(
-            '<div style="margin-top:14px;padding:12px 14px;background:#fff8e6;border-radius:8px;border:1px solid #f0d78c;">'
-            '<div style="font-size:13px;font-weight:700;color:#b7950b;letter-spacing:2px;margin-bottom:6px;">操 作</div>'
-            f'<div style="font-size:18px;font-weight:600;line-height:1.55;color:#333;">{_esc(action)}</div>'
-            "</div>"
-        )
+    if slot == "midday":
+        op_text = action
+        if position and action:
+            op_text = f"{position}\n{action}".strip()
+        elif position:
+            op_text = position
+    else:
+        op_text = action
+    if op_text:
+        _render_global_block(chunks, "操作", op_text, slot=slot)
 
-    time_line = str(sec["time"])
     if time_line:
         chunks.append(
             f'<div style="margin-top:14px;font-size:14px;color:#999;text-align:right;">分析时刻 · {_esc(time_line)}</div>'

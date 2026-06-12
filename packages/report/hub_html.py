@@ -5,43 +5,65 @@ import html
 import json
 from typing import Any
 
+_SLOT_ORDER: tuple[tuple[str, str, str], ...] = (
+    ("evening_prev", "昨日作战卡", "昨收 · 服务今日"),
+    ("morning", "开盘核对卡", "约 9:25"),
+    ("midday", "午间作战卡", "约 12:50"),
+    ("evening", "晚间收盘卡", "约 22:00"),
+)
+
 _HUB_CSS = """
 :root {
   --bg: #0c1118; --surface: #151d2b; --surface-2: #1c2738;
   --text: #e8eef6; --muted: #8fa3be; --accent: #4f8cff;
-  --border: #2a384f; --up: #3ecf8e; --down: #f05252; --warn: #f5a623;
+  --border: #2a384f; --warn: #f5a623;
   --radius: 12px;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
-.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }
+.wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 48px; }
 h1 { margin: 0 0 6px; font-size: 1.5rem; }
 .sub { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-.card {
+.report-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.report-item {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 18px 20px;
+  border-radius: var(--radius); overflow: hidden;
 }
-.card h2 { margin: 0 0 4px; font-size: 1.05rem; }
-.card .slot-time { font-size: .8rem; color: var(--muted); margin-bottom: 12px; }
+.report-item > details > summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 14px 16px; cursor: pointer; user-select: none;
+  list-style: none;
+}
+.report-item > details > summary::-webkit-details-marker { display: none; }
+.report-item > details > summary::after {
+  content: "展开"; margin-left: auto; font-size: .72rem; color: var(--muted);
+}
+.report-item > details[open] > summary::after { content: "收起"; }
+.report-item > details > summary:hover { background: var(--surface-2); }
+.report-title { font-size: 1rem; font-weight: 700; }
+.report-meta { font-size: .78rem; color: var(--muted); }
 .badge {
-  display: inline-block; padding: 3px 10px; border-radius: 999px;
-  font-size: .75rem; font-weight: 600; margin-bottom: 10px;
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: .72rem; font-weight: 600;
 }
 .badge.idle { background: #243044; color: var(--muted); }
 .badge.running { background: rgba(79,140,255,.2); color: #a8c7ff; }
 .badge.ok { background: rgba(62,207,142,.15); color: #9ee8c0; }
 .badge.fail { background: rgba(240,82,82,.15); color: #ffb4b4; }
-.timer {
-  font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums;
-  color: var(--accent); margin: 8px 0;
+.report-body {
+  padding: 0 16px 16px; border-top: 1px solid var(--border);
+  background: rgba(12,17,24,.35);
 }
-.bar { height: 8px; background: #243044; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+.timer {
+  font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--accent); margin: 12px 0 8px;
+}
+.bar { height: 6px; background: #243044; border-radius: 4px; overflow: hidden; margin: 8px 0 10px; }
 .bar > div { height: 100%; background: var(--accent); transition: width .3s; }
-.detail { font-size: .88rem; color: var(--muted); min-height: 2.5em; }
-.steps { list-style: none; padding: 0; margin: 12px 0 0; font-size: .82rem; }
-.steps li { padding: 4px 0; color: var(--muted); }
+.detail { font-size: .88rem; color: var(--muted); }
+.steps { list-style: none; padding: 0; margin: 10px 0 0; font-size: .82rem; }
+.steps li { padding: 3px 0; color: var(--muted); }
 .steps li.done { color: #9ee8c0; }
 .steps li.active { color: var(--accent); }
 a.report-link {
@@ -77,27 +99,31 @@ function renderSlot(slot, data) {
   const el = document.getElementById("slot-" + slot);
   if (!el || !data) return;
   const st = data.status || "idle";
-  el.querySelector(".badge").className = "badge " + statusClass(st);
-  el.querySelector(".badge").textContent = statusLabel(st);
+  const badge = el.querySelector(".badge");
+  if (badge) {
+    badge.className = "badge " + statusClass(st);
+    badge.textContent = statusLabel(st);
+  }
   const pct = Math.max(0, Math.min(100, Number(data.progress_pct) || 0));
-  el.querySelector(".bar-inner").style.width = pct + "%";
-  el.querySelector(".detail").textContent = data.detail || "";
+  const bar = el.querySelector(".bar-inner");
+  if (bar) bar.style.width = pct + "%";
+  const detail = el.querySelector(".detail");
+  if (detail) detail.textContent = data.detail || "";
   const link = el.querySelector(".report-link");
-  if (data.report_ready && data.report_href) {
-    link.href = data.report_href;
-    link.classList.remove("disabled");
-    const serve = data.report_trade_date || "";
-    const hubTd = (window.HUB_STATUS && window.HUB_STATUS.trade_date) || "";
-    link.textContent = (slot === "evening" && serve && hubTd && serve !== hubTd)
-      ? "打开昨晚报告"
-      : "打开报告";
-  } else {
-    link.href = "#";
-    link.classList.add("disabled");
-    link.textContent = "报告未就绪";
+  if (link) {
+    if (data.report_ready && data.report_href) {
+      link.href = data.report_href;
+      link.classList.remove("disabled");
+      const labels = { evening_prev: "打开昨收报告", evening: "打开收盘报告" };
+      link.textContent = labels[slot] || "打开报告";
+    } else {
+      link.href = "#";
+      link.classList.add("disabled");
+      link.textContent = "报告未就绪";
+    }
   }
   const stepsEl = el.querySelector(".steps");
-  if (stepsEl && data.steps_done) {
+  if (stepsEl) {
     stepsEl.innerHTML = "";
     const order = data.step_order || [];
     const done = new Set(data.steps_done || []);
@@ -114,12 +140,16 @@ function renderSlot(slot, data) {
   }
   el.dataset.startedAt = data.started_at || "";
   el.dataset.status = st;
+  if (st === "running") {
+    const details = el.querySelector("details");
+    if (details) details.open = true;
+  }
 }
 function tickTimers() {
-  document.querySelectorAll(".card[data-slot]").forEach((card) => {
-    const timer = card.querySelector(".timer");
-    const st = card.dataset.status;
-    const started = card.dataset.startedAt;
+  document.querySelectorAll(".report-item[data-slot]").forEach((item) => {
+    const timer = item.querySelector(".timer");
+    const st = item.dataset.status;
+    const started = item.dataset.startedAt;
     if (!timer) return;
     if (st !== "running" || !started) {
       timer.textContent = st === "ok" ? "—" : "00秒";
@@ -137,9 +167,7 @@ function applyHub(data) {
   if (td) td.textContent = data.trade_date || "";
   document.body.dataset.tradeDate = data.trade_date || "";
   const slots = data.slots || {};
-  renderSlot("morning", slots.morning);
-  renderSlot("midday", slots.midday);
-  renderSlot("evening", slots.evening);
+  ["evening_prev", "morning", "midday", "evening"].forEach((id) => renderSlot(id, slots[id]));
   tickTimers();
 }
 function hubJsonUrl() {
@@ -158,6 +186,14 @@ function pollHub() {
       document.body.appendChild(s);
     });
 }
+document.querySelectorAll(".report-item details").forEach((details) => {
+  details.addEventListener("toggle", () => {
+    if (!details.open) return;
+    document.querySelectorAll(".report-item details[open]").forEach((other) => {
+      if (other !== details) other.open = false;
+    });
+  });
+});
 window.applyHub = applyHub;
 if (window.__HUB_BOOT__) applyHub(window.__HUB_BOOT__);
 setInterval(tickTimers, 1000);
@@ -170,35 +206,31 @@ pollHub();
 def build_hub_page(hub: dict[str, Any]) -> str:
     trade_date = html.escape(str(hub.get("trade_date") or ""))
     boot = json.dumps(hub, ensure_ascii=False).replace("</", "<\\/")
-    cards: list[str] = []
-    slot_schedule = {
-        "morning": "约 9:25",
-        "midday": "约 12:50",
-        "evening": "昨晚报告 · 服务于今日",
-    }
-    for slot_id, label in (
-        ("morning", "开盘核对卡"),
-        ("midday", "午间作战卡"),
-        ("evening", "明日作战卡"),
-    ):
+    items: list[str] = []
+    for slot_id, label, schedule in _SLOT_ORDER:
         data = (hub.get("slots") or {}).get(slot_id) or {}
         st = data.get("status") or "idle"
-        cards.append(
+        badge_cls = st if st in ("running", "ok", "fail") else "idle"
+        items.append(
             f"""
-<div class="card" id="slot-{slot_id}" data-slot="{slot_id}" data-status="{html.escape(st)}">
-  <h2>{html.escape(label)}</h2>
-  <div class="slot-time">计划 {slot_schedule.get(slot_id, "")}</div>
-  <span class="badge {html.escape(st if st in ('running','ok','fail') else 'idle')}">{html.escape(st)}</span>
-  <div class="timer">00秒</div>
-  <div class="bar"><div class="bar-inner" style="width:0%"></div></div>
-  <div class="detail"></div>
-  <ul class="steps"></ul>
-  <a class="report-link disabled" href="#">报告未就绪</a>
-</div>"""
+<li class="report-item" id="slot-{slot_id}" data-slot="{slot_id}" data-status="{html.escape(st)}">
+  <details>
+    <summary>
+      <span class="report-title">{html.escape(label)}</span>
+      <span class="badge {html.escape(badge_cls)}">{html.escape(st)}</span>
+      <span class="report-meta">{html.escape(schedule)}</span>
+    </summary>
+    <div class="report-body">
+      <div class="timer">00秒</div>
+      <div class="bar"><div class="bar-inner" style="width:0%"></div></div>
+      <div class="detail"></div>
+      <ul class="steps"></ul>
+      <a class="report-link disabled" href="#">报告未就绪</a>
+    </div>
+  </details>
+</li>"""
         )
-        # stash data for first paint via inline script after renderSlot in applyHub from boot
-
-    cards_html = "\n".join(cards)
+    list_html = "\n".join(items)
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -210,9 +242,9 @@ def build_hub_page(hub: dict[str, Any]) -> str:
 <body data-trade-date="{trade_date}">
 <div class="wrap">
   <h1>ZXTT 作战卡</h1>
-  <p class="sub">交易日 <strong id="trade-date">{trade_date}</strong> · 早盘 / 午间 / 晚间 共用进度页</p>
-  <div class="grid">{cards_html}</div>
-  <p class="footer">自动刷新 · 生成中显示已用时间</p>
+  <p class="sub">交易日 <strong id="trade-date">{trade_date}</strong> · 点击标题展开进度与入口</p>
+  <ul class="report-list">{list_html}</ul>
+  <p class="footer">自动刷新 · 生成中自动展开</p>
 </div>
 <script>window.__HUB_BOOT__={boot};</script>
 <script>{_HUB_JS}</script>

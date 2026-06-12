@@ -386,7 +386,9 @@ def _format_push_body(label: str, body: str) -> tuple[str, str]:
 
 def push_summary_to_html(text: str, *, label_aliases: dict[str, str] | None = None) -> str:
     """微信推送摘要：按【环境】【我的】等分段渲染。"""
-    raw = (text or "").strip()
+    from report.push_summary_merge import merge_push_summary_parts
+
+    raw = merge_push_summary_parts((text or "").strip())
     if not raw:
         return ""
     if not _SECTION_HEAD.search(raw):

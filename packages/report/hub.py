@@ -16,9 +16,10 @@ _HUB_DIR = DATA_DIR / "report_hub"
 _REPORTS = ROOT / "reports"
 
 _SLOTS: tuple[tuple[str, str, str, str], ...] = (
+    ("evening_prev", "昨日作战卡", "", "daily_evening.html"),
     ("morning", "开盘核对卡", "morning_run", "daily_morning.html"),
     ("midday", "午间作战卡", "midday_run", "daily_midday.html"),
-    ("evening", "明日作战卡", "evening_run", "daily_evening.html"),
+    ("evening", "晚间收盘卡", "evening_run", "daily_evening.html"),
 )
 
 
@@ -36,21 +37,14 @@ def _report_ready(day: date, filename: str) -> bool:
     return (_REPORTS / day.isoformat() / filename).is_file()
 
 
-def _evening_report_day(view_day: date) -> date:
-    """晚间报告落盘日为前一交易日，服务于 view_day 当日交易。"""
+def _evening_prev_report_day(view_day: date) -> date:
+    """昨收报告交易日 = 上一交易日（服务于 view_day 当日）。"""
     prev = previous_trading_day(view_day)
     return prev if prev else view_day
 
 
-def _evening_run_status(view_day: date, run_dir: str) -> dict[str, Any]:
-    today_st = _load_json(DATA_DIR / run_dir / f"{view_day.isoformat()}.json") or {}
-    if today_st.get("status") in ("running", "fail"):
-        return today_st
-    report_day = _evening_report_day(view_day)
-    prev_st = _load_json(DATA_DIR / run_dir / f"{report_day.isoformat()}.json") or {}
-    if prev_st.get("status") == "ok":
-        return prev_st
-    return today_st if today_st else prev_st
+def _slot_run_status(view_day: date, run_dir: str) -> dict[str, Any]:
+    return _load_json(DATA_DIR / run_dir / f"{view_day.isoformat()}.json") or {}
 
 
 def _step_meta(slot_id: str) -> tuple[list[str], dict[str, str]]:
@@ -68,50 +62,63 @@ def _step_meta(slot_id: str) -> tuple[list[str], dict[str, str]]:
     }
 
 
-def aggregate_hub(day: date) -> dict[str, Any]:
-    slots: dict[str, Any] = {}
-    for slot_id, label, run_dir, html_name in _SLOTS:
-        report_day = _evening_report_day(day) if slot_id == "evening" else day
-        run_st = (
-            _evening_run_status(day, run_dir)
-            if slot_id == "evening"
-            else (_load_json(DATA_DIR / run_dir / f"{day.isoformat()}.json") or {})
-        )
-        report_path = f"{report_day.isoformat()}/{html_name}"
+def _aggregate_slot(
+    slot_id: str,
+    label: str,
+    run_dir: str,
+    html_name: str,
+    *,
+    view_day: date,
+) -> dict[str, Any]:
+    if slot_id == "evening_prev":
+        report_day = _evening_prev_report_day(view_day)
+        run_st = _slot_run_status(report_day, "evening_run") if run_dir else {}
+        report_ready = _report_ready(report_day, html_name)
+        status = "ok" if report_ready else "idle"
+        detail = f"昨收报告 · 交易日 {report_day.isoformat()}" if report_ready else "昨收未就绪"
+    else:
+        report_day = view_day
+        run_st = _slot_run_status(view_day, run_dir) if run_dir else {}
         report_ready = _report_ready(report_day, html_name)
         status = str(run_st.get("status") or "")
         if not status:
             status = "ok" if report_ready else "idle"
         detail = run_st.get("detail") or ""
         if not detail:
-            if report_ready and slot_id == "evening" and report_day != day:
-                detail = f"昨晚报告（{report_day.isoformat()} 盘后）"
-            elif not report_ready:
-                detail = "未运行"
-        step_order, step_labels = _step_meta(slot_id)
-        slots[slot_id] = {
-            "slot": slot_id,
-            "label": label,
-            "step_order": step_order,
-            "step_labels": step_labels,
-            "status": status,
-            "progress_pct": run_st.get("progress_pct", 100 if status == "ok" else 0),
-            "detail": detail,
-            "current_step": run_st.get("current_step") or "",
-            "current_label": run_st.get("current_label") or label,
-            "started_at": run_st.get("started_at") or run_st.get("started_at_iso") or "",
-            "finished_at": run_st.get("finished_at") or run_st.get("finished_at_iso") or "",
-            "updated_at": run_st.get("updated_at") or "",
-            "error": run_st.get("error") or "",
-            "steps_done": run_st.get("steps_done") or [],
-            "step_durations_ms": run_st.get("step_durations_ms") or {},
-            "report_href": report_path if report_ready else "",
-            "report_ready": report_ready,
-            "report_trade_date": report_day.isoformat(),
-            "sla_ok": run_st.get("sla_ok"),
-            "sla_ms": run_st.get("sla_ms"),
-            "ai_duration_ms": run_st.get("ai_duration_ms"),
-        }
+            detail = "完成" if report_ready else "未运行"
+
+    step_order, step_labels = _step_meta(slot_id if slot_id != "evening_prev" else "evening")
+    return {
+        "slot": slot_id,
+        "label": label,
+        "step_order": step_order,
+        "step_labels": step_labels,
+        "status": status,
+        "progress_pct": run_st.get("progress_pct", 100 if status == "ok" else 0),
+        "detail": detail,
+        "current_step": run_st.get("current_step") or "",
+        "current_label": run_st.get("current_label") or label,
+        "started_at": run_st.get("started_at") or run_st.get("started_at_iso") or "",
+        "finished_at": run_st.get("finished_at") or run_st.get("finished_at_iso") or "",
+        "updated_at": run_st.get("updated_at") or "",
+        "error": run_st.get("error") or "",
+        "steps_done": run_st.get("steps_done") or [],
+        "step_durations_ms": run_st.get("step_durations_ms") or {},
+        "report_href": f"{report_day.isoformat()}/{html_name}" if report_ready else "",
+        "report_ready": report_ready,
+        "report_trade_date": report_day.isoformat(),
+        "sla_ok": run_st.get("sla_ok"),
+        "sla_ms": run_st.get("sla_ms"),
+        "ai_duration_ms": run_st.get("ai_duration_ms"),
+    }
+
+
+def aggregate_hub(day: date) -> dict[str, Any]:
+    slots: dict[str, Any] = {}
+    for slot_id, label, run_dir, html_name in _SLOTS:
+        slots[slot_id] = _aggregate_slot(
+            slot_id, label, run_dir, html_name, view_day=day
+        )
     return {
         "schema_version": 1,
         "trade_date": day.isoformat(),

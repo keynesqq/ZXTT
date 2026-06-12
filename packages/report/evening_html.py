@@ -5,7 +5,7 @@ import html
 import re
 from typing import Any
 
-from report.md_html import markdown_to_html, push_summary_to_html
+from report.md_html import extract_push_section_body, markdown_to_html, push_summary_to_html
 from report.stock_fact_strip import (
     inject_stock_events_footer,
     inject_stock_fact_strips,
@@ -261,6 +261,7 @@ details.stock-block[open] > summary.stock-heading {
 .env-seg.warn { border-color: rgba(245,166,35,.35); background: rgba(245,166,35,.08); color: #ffd08a; }
 .env-seg.up { border-color: rgba(240,82,82,.3); color: #ffb4b4; }
 .env-seg.down { border-color: rgba(62,207,142,.3); color: #9ee8c0; }
+.env-seg.env-op { border-color: rgba(79,140,255,.35); background: rgba(79,140,255,.1); color: #a8c7ff; }
 .footer-note { margin-top: 32px; text-align: center; font-size: .78rem; color: var(--muted); }
 .tag-pill {
   display: inline-block; margin: 2px 4px 2px 0; padding: 2px 7px;
@@ -295,15 +296,25 @@ def _chip_time_label(context_as_of: str) -> str:
     return s
 
 
+def _operation_hint(summary_raw: str) -> str:
+    body = extract_push_section_body(summary_raw, "操作")
+    if not body:
+        return ""
+    first = body.split("。", 1)[0].strip()
+    if first and not first.endswith("。"):
+        first += "。"
+    return first
+
+
 def _hero_meta_chips_html(rc: dict[str, Any]) -> str:
     trade_date = html.escape(str(rc.get("trade_date") or ""))
     session = f'<span class="chip accent">盘后复盘 · 明日策略 · 交易日 {trade_date}</span>'
     time_bit = _chip_time_label(str(rc.get("context_as_of") or ""))
     if rc.get("ai_ok"):
-        ai_label = f"AI 已生成{time_bit}" if time_bit else "AI 已生成"
+        ai_label = f"AI 已生成 · {time_bit}" if time_bit else "AI 已生成"
         ai = f'<span class="chip ok">{html.escape(ai_label)}</span>'
     else:
-        ai_label = f"AI 未就绪{time_bit}" if time_bit else "AI 未就绪"
+        ai_label = f"AI 未就绪 · {time_bit}" if time_bit else "AI 未就绪"
         ai = f'<span class="chip err">{html.escape(ai_label)}</span>'
     return session + ai
 
@@ -390,14 +401,39 @@ def _env_segments_html(segments: list[str]) -> str:
     )
 
 
+def _summary_hint_strip_html(rc: dict[str, Any]) -> str:
+    if not rc.get("ai_ok"):
+        return ""
+    raw = str(rc.get("ai_summary_raw") or "")
+    env = extract_push_section_body(raw, "环境")
+    op = _operation_hint(raw)
+    segs: list[str] = []
+    if env:
+        short = env.split("。", 1)[0].strip()
+        if short and not short.endswith("。"):
+            short += "。"
+        segs.append(f'<span class="env-seg">{html.escape(short)}</span>')
+    if op:
+        segs.append(f'<span class="env-seg env-op">{html.escape(op)}</span>')
+    if not segs:
+        return ""
+    session = html.escape(str(rc.get("session_label") or "晚间收市"))
+    return (
+        f'<div class="env-strip env-strip-summary">'
+        f'<div class="env-strip-head">摘要速览 <span class="env-slot">{session}</span></div>'
+        f'<div class="env-row"><span class="env-label">要点</span>'
+        f'<div class="env-segments">{"".join(segs)}</div></div></div>'
+    )
+
+
 def _market_env_top_html(rc: dict[str, Any]) -> str:
     ml = rc.get("market_local") or {}
     l1_segs = _brief_segments(str(ml.get("l1_brief") or ""))
     l2_segs = _brief_segments(str(ml.get("l2_brief") or ""))
     if not l1_segs and not l2_segs:
-        return ""
+        return _summary_hint_strip_html(rc)
     session = html.escape(str(rc.get("session_label") or "晚间收市"))
-    return (
+    market = (
         f'<div class="env-strip">'
         f'<div class="env-strip-head">全天大盘 <span class="env-slot">{session}</span></div>'
         f'<div class="env-row env-l1"><span class="env-label">L1</span>'
@@ -406,6 +442,7 @@ def _market_env_top_html(rc: dict[str, Any]) -> str:
         f'<div class="env-segments">{_env_segments_html(l2_segs)}</div></div>'
         f"</div>"
     )
+    return _summary_hint_strip_html(rc) + market
 
 
 def _alerts_html(rc: dict[str, Any]) -> str:

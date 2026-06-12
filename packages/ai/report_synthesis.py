@@ -84,14 +84,16 @@ def _empty_shard(push_label: str, chapter: str) -> tuple[str, str]:
 
 
 def merge_sharded(global_summary: str, shard_outputs: list[tuple[str, str, str]]) -> str:
-    summary_lines = [global_summary.strip()] if global_summary.strip() else []
+    from report.push_summary_merge import merge_push_summary_parts
+
+    summary_parts = [global_summary.strip()] if global_summary.strip() else []
     body_parts: list[str] = []
     for _, summary_part, body_part in shard_outputs:
         if summary_part.strip():
-            summary_lines.append(summary_part.strip())
+            summary_parts.append(summary_part.strip())
         if body_part.strip():
             body_parts.append(body_part.strip())
-    summary = "\n".join(summary_lines)
+    summary = merge_push_summary_parts(*summary_parts)
     body = "\n\n".join(body_parts)
     return f"## 推送摘要\n{summary}\n\n{body}".strip()
 

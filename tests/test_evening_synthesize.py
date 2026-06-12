@@ -26,6 +26,16 @@ class MergeShardedTests(unittest.TestCase):
         self.assertIn("600519", raw)
         self.assertIn("000021", raw)
 
+    def test_merge_duplicate_shard_labels(self) -> None:
+        global_summary = "【环境】中\n【操作】核对"
+        shards = [
+            ("g1", "【想买的】\n000021 深科技 | 等 | 基准", "## 想买的\n### 000021"),
+            ("g2", "【想买的】\n002273 水晶光电 | 观望 | 弱", "## 想买的\n### 002273"),
+        ]
+        raw = merge_sharded(global_summary, shards)
+        self.assertEqual(raw.split("【想买的】", 1)[1].count("【想买的】"), 0)
+        self.assertIn("002273", raw)
+
 
 class EvaluateRawTests(unittest.TestCase):
     def test_missing_critical(self) -> None:
