@@ -16,13 +16,13 @@ _HUB_CSS = """
 :root {
   --bg: #0c1118; --surface: #151d2b; --surface-2: #1c2738;
   --text: #e8eef6; --muted: #8fa3be; --accent: #4f8cff;
-  --border: #2a384f; --warn: #f5a623;
+  --border: #2a384f;
   --radius: 12px;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
-.wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 48px; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }
 h1 { margin: 0 0 6px; font-size: 1.5rem; }
 .sub { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
 .report-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -37,7 +37,7 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
 }
 .report-item > details > summary::-webkit-details-marker { display: none; }
 .report-item > details > summary::after {
-  content: "展开"; margin-left: auto; font-size: .72rem; color: var(--muted);
+  content: "展开报告"; margin-left: auto; font-size: .72rem; color: var(--muted);
 }
 .report-item > details[open] > summary::after { content: "收起"; }
 .report-item > details > summary:hover { background: var(--surface-2); }
@@ -51,27 +51,20 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
 .badge.running { background: rgba(79,140,255,.2); color: #a8c7ff; }
 .badge.ok { background: rgba(62,207,142,.15); color: #9ee8c0; }
 .badge.fail { background: rgba(240,82,82,.15); color: #ffb4b4; }
-.report-body {
-  padding: 0 16px 16px; border-top: 1px solid var(--border);
-  background: rgba(12,17,24,.35);
+.report-body { border-top: 1px solid var(--border); background: var(--bg); }
+.report-frame {
+  display: block; width: 100%; border: none;
+  height: 480px; background: var(--bg); overflow: hidden;
 }
-.timer {
-  font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums;
-  color: var(--accent); margin: 12px 0 8px;
+.report-empty {
+  padding: 32px 20px; text-align: center; color: var(--muted); font-size: .9rem;
 }
-.bar { height: 6px; background: #243044; border-radius: 4px; overflow: hidden; margin: 8px 0 10px; }
-.bar > div { height: 100%; background: var(--accent); transition: width .3s; }
-.detail { font-size: .88rem; color: var(--muted); }
-.steps { list-style: none; padding: 0; margin: 10px 0 0; font-size: .82rem; }
-.steps li { padding: 3px 0; color: var(--muted); }
-.steps li.done { color: #9ee8c0; }
-.steps li.active { color: var(--accent); }
-a.report-link {
-  display: inline-block; margin-top: 12px; padding: 8px 14px;
-  background: var(--accent); color: #fff; border-radius: 8px;
-  text-decoration: none; font-size: .88rem; font-weight: 600;
+.report-empty .empty-title { font-size: 1rem; color: var(--text); margin-bottom: 8px; }
+.report-empty .empty-bar {
+  height: 6px; max-width: 240px; margin: 12px auto 0;
+  background: #243044; border-radius: 4px; overflow: hidden;
 }
-a.report-link.disabled { opacity: .4; pointer-events: none; background: #243044; }
+.report-empty .empty-bar > div { height: 100%; background: var(--accent); transition: width .3s; }
 .footer { margin-top: 24px; font-size: .8rem; color: var(--muted); }
 """
 
@@ -79,11 +72,6 @@ _HUB_JS = """
 function qp(name) {
   const m = new RegExp("[?&]" + name + "=([^&]*)").exec(location.search);
   return m ? decodeURIComponent(m[1]) : "";
-}
-function fmtElapsed(sec) {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return (m > 0 ? m + "分" : "") + s + "秒";
 }
 function statusClass(st) {
   if (st === "running") return "running";
@@ -95,6 +83,55 @@ function statusLabel(st) {
   const map = { running: "生成中", ok: "已完成", fail: "失败", idle: "未运行" };
   return map[st] || st || "未运行";
 }
+function resizeReportFrame(frame) {
+  if (!frame || frame.hidden) return;
+  try {
+    const doc = frame.contentDocument || frame.contentWindow?.document;
+    if (!doc) return;
+    const h = Math.max(
+      doc.documentElement?.scrollHeight || 0,
+      doc.body?.scrollHeight || 0,
+      480
+    );
+    frame.style.height = h + "px";
+  } catch (e) { /* 跨域时保留默认高度 */ }
+}
+function bindFrameAutoHeight(frame) {
+  if (!frame || frame.dataset.autoHeight === "1") return;
+  frame.dataset.autoHeight = "1";
+  frame.addEventListener("load", () => {
+    resizeReportFrame(frame);
+    try {
+      const doc = frame.contentDocument;
+      const root = doc?.documentElement;
+      if (root && window.ResizeObserver) {
+        new ResizeObserver(() => resizeReportFrame(frame)).observe(root);
+      }
+    } catch (e) {}
+  });
+}
+function loadReportFrame(item) {
+  const href = item.dataset.reportHref || "";
+  const details = item.querySelector("details");
+  const frame = item.querySelector(".report-frame");
+  const empty = item.querySelector(".report-empty");
+  if (!details || !details.open) return;
+  if (!href) {
+    if (frame) frame.hidden = true;
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (frame) {
+    bindFrameAutoHeight(frame);
+    if (!frame.src || frame.dataset.src !== href) {
+      frame.src = href;
+      frame.dataset.src = href;
+    }
+    frame.hidden = false;
+    if (frame.contentDocument?.readyState === "complete") resizeReportFrame(frame);
+  }
+  if (empty) empty.hidden = true;
+}
 function renderSlot(slot, data) {
   const el = document.getElementById("slot-" + slot);
   if (!el || !data) return;
@@ -104,61 +141,29 @@ function renderSlot(slot, data) {
     badge.className = "badge " + statusClass(st);
     badge.textContent = statusLabel(st);
   }
-  const pct = Math.max(0, Math.min(100, Number(data.progress_pct) || 0));
-  const bar = el.querySelector(".bar-inner");
-  if (bar) bar.style.width = pct + "%";
-  const detail = el.querySelector(".detail");
-  if (detail) detail.textContent = data.detail || "";
-  const link = el.querySelector(".report-link");
-  if (link) {
-    if (data.report_ready && data.report_href) {
-      link.href = data.report_href;
-      link.classList.remove("disabled");
-      const labels = { evening_prev: "打开昨收报告", evening: "打开收盘报告" };
-      link.textContent = labels[slot] || "打开报告";
-    } else {
-      link.href = "#";
-      link.classList.add("disabled");
-      link.textContent = "报告未就绪";
-    }
-  }
-  const stepsEl = el.querySelector(".steps");
-  if (stepsEl) {
-    stepsEl.innerHTML = "";
-    const order = data.step_order || [];
-    const done = new Set(data.steps_done || []);
-    const cur = data.current_step || "";
-    for (const key of order) {
-      const li = document.createElement("li");
-      li.textContent = (data.step_labels && data.step_labels[key]) || key;
-      if (done.has(key)) li.className = "done";
-      else if (key === cur && st === "running") li.className = "active";
-      const dur = (data.step_durations_ms || {})[key];
-      if (dur) li.textContent += " · " + Math.floor(dur / 1000) + "s";
-      stepsEl.appendChild(li);
-    }
-  }
-  el.dataset.startedAt = data.started_at || "";
+  const ready = !!(data.report_ready && data.report_href);
+  el.dataset.reportHref = ready ? data.report_href : "";
   el.dataset.status = st;
+  const empty = el.querySelector(".report-empty");
+  if (empty && !ready) {
+    empty.hidden = false;
+    const title = empty.querySelector(".empty-title");
+    const note = empty.querySelector(".empty-note");
+    const bar = empty.querySelector(".empty-bar-inner");
+    if (title) {
+      title.textContent = st === "running" ? "报告生成中…" : st === "fail" ? "报告生成失败" : "报告未就绪";
+    }
+    if (note) note.textContent = data.detail || data.error || "";
+    if (bar) {
+      const pct = Math.max(0, Math.min(100, Number(data.progress_pct) || 0));
+      bar.style.width = st === "running" ? pct + "%" : "0%";
+    }
+  }
   if (st === "running") {
     const details = el.querySelector("details");
     if (details) details.open = true;
   }
-}
-function tickTimers() {
-  document.querySelectorAll(".report-item[data-slot]").forEach((item) => {
-    const timer = item.querySelector(".timer");
-    const st = item.dataset.status;
-    const started = item.dataset.startedAt;
-    if (!timer) return;
-    if (st !== "running" || !started) {
-      timer.textContent = st === "ok" ? "—" : "00秒";
-      return;
-    }
-    const start = new Date(String(started).replace(" ", "T"));
-    const sec = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
-    timer.textContent = fmtElapsed(sec);
-  });
+  loadReportFrame(el);
 }
 function applyHub(data) {
   if (!data) return;
@@ -168,7 +173,6 @@ function applyHub(data) {
   document.body.dataset.tradeDate = data.trade_date || "";
   const slots = data.slots || {};
   ["evening_prev", "morning", "midday", "evening"].forEach((id) => renderSlot(id, slots[id]));
-  tickTimers();
 }
 function hubJsonUrl() {
   const td = (window.HUB_STATUS && window.HUB_STATUS.trade_date) || qp("date") || document.body.dataset.tradeDate;
@@ -188,17 +192,23 @@ function pollHub() {
 }
 document.querySelectorAll(".report-item details").forEach((details) => {
   details.addEventListener("toggle", () => {
-    if (!details.open) return;
-    document.querySelectorAll(".report-item details[open]").forEach((other) => {
-      if (other !== details) other.open = false;
-    });
+    const item = details.closest(".report-item");
+    if (!item) return;
+    if (details.open) {
+      document.querySelectorAll(".report-item details[open]").forEach((other) => {
+        if (other !== details) other.open = false;
+      });
+      loadReportFrame(item);
+    } else if (item.querySelector(".report-frame")) {
+      item.querySelector(".report-frame").hidden = true;
+      const empty = item.querySelector(".report-empty");
+      if (empty && !item.dataset.reportHref) empty.hidden = false;
+    }
   });
 });
 window.applyHub = applyHub;
 if (window.__HUB_BOOT__) applyHub(window.__HUB_BOOT__);
-setInterval(tickTimers, 1000);
 setInterval(pollHub, 2000);
-tickTimers();
 pollHub();
 """
 
@@ -221,11 +231,12 @@ def build_hub_page(hub: dict[str, Any]) -> str:
       <span class="report-meta">{html.escape(schedule)}</span>
     </summary>
     <div class="report-body">
-      <div class="timer">00秒</div>
-      <div class="bar"><div class="bar-inner" style="width:0%"></div></div>
-      <div class="detail"></div>
-      <ul class="steps"></ul>
-      <a class="report-link disabled" href="#">报告未就绪</a>
+      <div class="report-empty">
+        <div class="empty-title">报告未就绪</div>
+        <div class="empty-note"></div>
+        <div class="empty-bar"><div class="empty-bar-inner" style="width:0%"></div></div>
+      </div>
+      <iframe class="report-frame" title="{html.escape(label)}" hidden loading="lazy"></iframe>
     </div>
   </details>
 </li>"""
@@ -242,9 +253,9 @@ def build_hub_page(hub: dict[str, Any]) -> str:
 <body data-trade-date="{trade_date}">
 <div class="wrap">
   <h1>ZXTT 作战卡</h1>
-  <p class="sub">交易日 <strong id="trade-date">{trade_date}</strong> · 点击标题展开进度与入口</p>
+  <p class="sub">交易日 <strong id="trade-date">{trade_date}</strong> · 点击标题展开对应报告</p>
   <ul class="report-list">{list_html}</ul>
-  <p class="footer">自动刷新 · 生成中自动展开</p>
+  <p class="footer">自动刷新状态 · 展开后内嵌完整报告（高度随内容）</p>
 </div>
 <script>window.__HUB_BOOT__={boot};</script>
 <script>{_HUB_JS}</script>

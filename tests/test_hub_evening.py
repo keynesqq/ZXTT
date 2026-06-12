@@ -45,9 +45,11 @@ class TestHubEveningServeDay(unittest.TestCase):
         page = build_hub_page(aggregate_hub(date(2026, 6, 12)))
         self.assertIn("report-list", page)
         self.assertIn("<details>", page)
+        self.assertIn("report-frame", page)
         self.assertIn("昨日作战卡", page)
         self.assertIn("晚间收盘卡", page)
         self.assertNotIn('class="grid"', page)
+        self.assertNotIn("report-link", page)
 
 
 if __name__ == "__main__":
