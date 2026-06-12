@@ -123,7 +123,8 @@ class AuctionWatchTest(unittest.TestCase):
                 patch("auction.manifest.DATA_DIR", data),
                 patch("auction.watch.resolve_auction_stocks", return_value=stocks),
                 patch("auction.watch.build_auction_snapshots", return_value=[snap]),
-                patch("auction.watch._sleep_until"),
+                patch("auction.watch.sleep_until"),
+                patch("core.schedule_guard.prepare_live_schedule", side_effect=lambda s, **_: s),
                 patch("auction.watch.is_trading_day", return_value=True),
             ):
                 append_auction_series_point([snap], captured_at="2026-06-11 08:00:00", on_date=day)
@@ -143,7 +144,8 @@ class AuctionWatchTest(unittest.TestCase):
                     return_value=[StockItem(code="600519", name="茅台", group="", block_id="")],
                 ),
                 patch("auction.watch.build_auction_snapshots", side_effect=RuntimeError("quote down")),
-                patch("auction.watch._sleep_until"),
+                patch("auction.watch.sleep_until"),
+                patch("core.schedule_guard.prepare_live_schedule", side_effect=lambda s, **_: s),
                 patch("auction.watch.is_trading_day", return_value=True),
             ):
                 result = run_auction_watch(["600519"], force=False, on_date=day)
@@ -151,6 +153,40 @@ class AuctionWatchTest(unittest.TestCase):
                 manifest = json.loads((data / "last_auction_watch.json").read_text(encoding="utf-8"))
                 self.assertEqual(manifest["outcome"], "error")
                 self.assertIn("quote down", manifest["message"])
+
+    def test_resume_keeps_partial_auction_points(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        day = date(2026, 6, 11)
+        tz = ZoneInfo("Asia/Shanghai")
+        stocks = [StockItem(code="600519", name="茅台", group="我的")]
+        snap = AuctionSnap(code="600519", name="茅台", group="我的", price=10.0, pre_close=10.0)
+        short_schedule = [
+            datetime(2026, 6, 11, 9, 15, 5, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 15, 35, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 25, 5, tzinfo=tz),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            with patch("auction.series.DATA_DIR", data):
+                append_auction_series_point([snap], captured_at="2026-06-11 09:15:05", on_date=day)
+                append_auction_series_point([snap], captured_at="2026-06-11 09:15:35", on_date=day)
+            with (
+                patch("auction.series.DATA_DIR", data),
+                patch("auction.trajectory.DATA_DIR", data),
+                patch("auction.manifest.DATA_DIR", data),
+                patch("auction.watch.resolve_auction_stocks", return_value=stocks),
+                patch("auction.watch.build_auction_snapshots", return_value=[snap]),
+                patch("auction.watch._schedule_times", return_value=(short_schedule, 30)),
+                patch("auction.watch.sleep_until"),
+                patch("auction.watch.is_trading_day", return_value=True),
+            ):
+                result = run_auction_watch(["600519"], force=False, on_date=day, resume=True)
+                self.assertEqual(result["outcome"], "ok")
+                loaded = load_auction_series(on_date=day)
+                self.assertEqual(len(loaded), 3)
+                self.assertTrue(loaded[-1].get("is_final"))
 
 
 class AuctionSimulateTest(unittest.TestCase):

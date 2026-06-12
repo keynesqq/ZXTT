@@ -4,13 +4,17 @@ from __future__ import annotations
 from datetime import date
 
 from core.config import intraday_cfg, normalize_code
+from core.trading_calendar import today_cn
 from morning.codes import codes_from_quote
 from watchlist.loader import dedupe_stocks_by_code, load_stocks, watchlist_by_code
 from watchlist.ths_blocks import StockItem, ThsBlocksError
 
 
 def _stocks_from_codes(codes: list[str]) -> list[StockItem]:
-    wl_map = watchlist_by_code()
+    try:
+        wl_map = watchlist_by_code()
+    except ThsBlocksError:
+        wl_map = {}
     items: list[StockItem] = []
     seen: set[str] = set()
     for raw in codes:
@@ -34,7 +38,7 @@ def _default_watchlist_stocks(*, on_date: date | None = None) -> list[StockItem]
     except ThsBlocksError:
         pass
 
-    cal = on_date or date.today()
+    cal = on_date or today_cn()
     from_quote, _ = codes_from_quote(cal)
     if from_quote:
         return _stocks_from_codes(from_quote)

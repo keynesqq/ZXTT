@@ -60,10 +60,11 @@ class IntradayStocksTests(unittest.TestCase):
         self.assertEqual(stocks[0].group, "我的")
 
     @patch("intraday.stocks.load_stocks", side_effect=ThsBlocksError("no ths"))
+    @patch("intraday.stocks.watchlist_by_code", side_effect=ThsBlocksError("no ths"))
     @patch("morning.codes.load_stocks", return_value=[])
     @patch("morning.codes.load_quote_query_cache", return_value=None)
     @patch("intraday.stocks.intraday_cfg", return_value={"codes": ["300750", "300750"]})
-    def test_fallback_codes_from_config(self, _cfg, _cache, _stocks, _load):
+    def test_fallback_codes_from_config(self, _cfg, _cache, _stocks, _wl, _load):
         stocks = resolve_intraday_stocks(None)
         self.assertEqual([s.code for s in stocks], ["300750"])
 
@@ -78,6 +79,28 @@ class IntradayResumeTests(unittest.TestCase):
             phases = resolve_phases(session="all", resume=True, on_date=day)
         self.assertEqual(phases, ["afternoon"])
 
+    def test_resolve_phases_single_session_resume_skips_done(self):
+        day = date(2026, 6, 12)
+        with patch("intraday.resume.phase_complete", return_value=True):
+            phases = resolve_phases(session="morning", resume=True, on_date=day)
+        self.assertEqual(phases, [])
+
+    def test_force_single_point_not_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            with patch("intraday.series.DATA_DIR", data):
+                day = date(2026, 6, 12)
+                append_intraday_segment_point(
+                    [{"code": "600519"}],
+                    captured_at="2026-06-12 09:30:00",
+                    on_date=day,
+                    segment="morning",
+                    is_final=True,
+                )
+                from intraday.resume import intraday_segment_complete
+
+                self.assertFalse(intraday_segment_complete(day, "morning"))
+
 
 class IntradayScheduleTests(unittest.TestCase):
     def test_default_schedule_covers_morning_session(self):
@@ -88,6 +111,12 @@ class IntradayScheduleTests(unittest.TestCase):
         self.assertEqual(schedule[-1].strftime("%H:%M:%S"), "11:30:00")
         self.assertEqual(len(schedule), 121)
 
+    def test_schedule_times_alias_morning(self):
+        day = date(2026, 6, 12)
+        morning, _ = _schedule_morning(day)
+        alias, _ = _schedule_times(day)
+        self.assertEqual(morning, alias)
+
     def test_default_schedule_covers_afternoon_session(self):
         day = date(2026, 6, 12)
         schedule, interval = _schedule_afternoon(day)
@@ -96,11 +125,147 @@ class IntradayScheduleTests(unittest.TestCase):
         self.assertEqual(schedule[-1].strftime("%H:%M:%S"), "15:00:00")
         self.assertEqual(len(schedule), 121)
 
-    def test_schedule_times_alias_morning(self):
+
+class IntradayScheduleGuardTests(unittest.TestCase):
+    def test_historical_date_skips_guard(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from core.schedule_guard import prepare_live_schedule
+
+        day = date(2026, 6, 11)
+        tz = ZoneInfo("Asia/Shanghai")
+        schedule = [datetime(2026, 6, 11, 9, 30, tzinfo=tz), datetime(2026, 6, 11, 9, 31, tzinfo=tz)]
+        with patch("core.schedule_guard.today_cn", return_value=date(2026, 6, 12)):
+            out = prepare_live_schedule(schedule, phase="morning", force=False, on_date=day)
+        self.assertEqual(out, schedule)
+
+    def test_after_end_raises(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from core.schedule_guard import prepare_live_schedule
+
         day = date(2026, 6, 12)
-        morning, _ = _schedule_morning(day)
-        alias, _ = _schedule_times(day)
-        self.assertEqual(morning, alias)
+        tz = ZoneInfo("Asia/Shanghai")
+        schedule = [datetime(2026, 6, 12, 9, 30, tzinfo=tz), datetime(2026, 6, 12, 9, 31, tzinfo=tz)]
+        fake_now = datetime(2026, 6, 12, 10, 0, tzinfo=tz)
+        with (
+            patch("core.schedule_guard.today_cn", return_value=day),
+            patch("core.schedule_guard.datetime") as dt_mod,
+        ):
+            dt_mod.now.return_value = fake_now
+            with self.assertRaisesRegex(RuntimeError, "上午时段已结束"):
+                prepare_live_schedule(schedule, phase="morning", force=False, on_date=day)
+
+    def test_mid_window_trims_past_points(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from core.schedule_guard import prepare_live_schedule
+
+        day = date(2026, 6, 12)
+        tz = ZoneInfo("Asia/Shanghai")
+        schedule = [
+            datetime(2026, 6, 12, 9, 30, tzinfo=tz),
+            datetime(2026, 6, 12, 9, 31, tzinfo=tz),
+            datetime(2026, 6, 12, 9, 32, tzinfo=tz),
+        ]
+        fake_now = datetime(2026, 6, 12, 9, 31, 0, tzinfo=tz)
+        with (
+            patch("core.schedule_guard.today_cn", return_value=day),
+            patch("core.schedule_guard._sleep_until"),
+            patch("core.schedule_guard.datetime") as dt_mod,
+        ):
+            dt_mod.now.side_effect = [fake_now, fake_now]
+            out = prepare_live_schedule(schedule, phase="morning", force=False, on_date=day)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0].strftime("%H:%M:%S"), "09:31:00")
+
+    def test_resume_skips_collected_slots(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from core.schedule_guard import resolve_collect_schedule
+
+        day = date(2026, 6, 11)
+        tz = ZoneInfo("Asia/Shanghai")
+        schedule = [
+            datetime(2026, 6, 11, 9, 30, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 31, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 32, tzinfo=tz),
+        ]
+        existing = [
+            {"captured_at": "2026-06-11 09:30:00"},
+            {"captured_at": "2026-06-11 09:31:00"},
+        ]
+        out = resolve_collect_schedule(
+            schedule,
+            phase="morning",
+            force=False,
+            on_date=day,
+            resume=True,
+            existing_points=existing,
+        )
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].strftime("%H:%M:%S"), "09:32:00")
+
+    def test_resume_by_time_not_file_length(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from core.schedule_guard import resolve_collect_schedule
+
+        day = date(2026, 6, 11)
+        tz = ZoneInfo("Asia/Shanghai")
+        schedule = [
+            datetime(2026, 6, 11, 9, 30, 0, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 31, 0, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 32, 0, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 33, 0, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 34, 0, tzinfo=tz),
+        ]
+        existing = [
+            {"captured_at": "2026-06-11 09:30:00"},
+            {"captured_at": "2026-06-11 09:31:00"},
+        ]
+        out = resolve_collect_schedule(
+            schedule,
+            phase="morning",
+            force=False,
+            on_date=day,
+            resume=True,
+            existing_points=existing,
+        )
+        self.assertEqual(len(out), 3)
+        self.assertEqual(out[0].strftime("%H:%M:%S"), "09:32:00")
+
+    def test_require_raises_when_incomplete_and_no_slots(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from core.schedule_guard import require_collect_schedule
+
+        day = date(2026, 6, 11)
+        tz = ZoneInfo("Asia/Shanghai")
+        schedule = [
+            datetime(2026, 6, 11, 9, 30, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 31, tzinfo=tz),
+        ]
+        existing = [
+            {"captured_at": "2026-06-11 09:30:00"},
+            {"captured_at": "2026-06-11 09:31:00", "is_final": False},
+        ]
+        with self.assertRaisesRegex(RuntimeError, "上午段尚有未完成数据"):
+            require_collect_schedule(
+                schedule,
+                phase="morning",
+                force=False,
+                on_date=day,
+                resume=True,
+                existing_points=existing,
+                incomplete=True,
+            )
 
 
 class IntradaySeriesTests(unittest.TestCase):
@@ -161,7 +326,7 @@ class IntradayWatchTests(unittest.TestCase):
                 patch("intraday.watch.resolve_intraday_stocks", return_value=stocks),
                 patch("intraday.watch.build_snapshots", return_value=[snap]),
                 patch("intraday.watch.run_auction_watch", return_value=auction_ok),
-                patch("intraday.watch._sleep_until"),
+                patch("intraday.watch.sleep_until"),
                 patch("intraday.watch.is_trading_day", return_value=True),
             ):
                 result = run_intraday_watch(["600519"], force=True, on_date=day, session="all")
@@ -171,6 +336,9 @@ class IntradayWatchTests(unittest.TestCase):
                 self.assertEqual(result["afternoon_point_count"], 1)
                 self.assertEqual(result["merged_point_count"], 2)
                 self.assertTrue((data / f"intraday_series_{day.isoformat()}.json").is_file())
+                manifest = json.loads((data / "last_intraday_watch.json").read_text(encoding="utf-8"))
+                self.assertEqual(manifest["outcome"], "ok")
+                self.assertEqual(manifest["phases_done"], ["auction", "morning", "afternoon"])
 
     def test_watch_error_writes_manifest(self):
         day = date(2026, 6, 12)
@@ -185,7 +353,7 @@ class IntradayWatchTests(unittest.TestCase):
                 ),
                 patch("intraday.watch.run_auction_watch", return_value={"outcome": "ok", "point_count": 1}),
                 patch("intraday.watch.build_snapshots", side_effect=RuntimeError("quote down")),
-                patch("intraday.watch._sleep_until"),
+                patch("intraday.watch.sleep_until"),
                 patch("intraday.watch.is_trading_day", return_value=True),
             ):
                 result = run_intraday_watch(["600519"], force=True, on_date=day)
@@ -193,6 +361,105 @@ class IntradayWatchTests(unittest.TestCase):
                 manifest = json.loads((data / "last_intraday_watch.json").read_text(encoding="utf-8"))
                 self.assertEqual(manifest["outcome"], "error")
                 self.assertIn("quote down", manifest["message"])
+
+    def test_resume_keeps_partial_morning_points(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        day = date(2026, 6, 11)
+        tz = ZoneInfo("Asia/Shanghai")
+        stocks = [StockItem(code="600519", name="茅台", group="我的", block_id="")]
+        snap = _mock_snapshot_row("600519", "2026-06-11 09:30:00")
+        short_schedule = [
+            datetime(2026, 6, 11, 9, 30, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 31, tzinfo=tz),
+            datetime(2026, 6, 11, 9, 32, tzinfo=tz),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            with patch("intraday.series.DATA_DIR", data):
+                append_intraday_segment_point(
+                    [{"code": "600519"}],
+                    captured_at="2026-06-11 09:30:00",
+                    on_date=day,
+                    segment="morning",
+                )
+                append_intraday_segment_point(
+                    [{"code": "600519"}],
+                    captured_at="2026-06-11 09:31:00",
+                    on_date=day,
+                    segment="morning",
+                )
+            with (
+                patch("intraday.series.DATA_DIR", data),
+                patch("intraday.manifest.DATA_DIR", data),
+                patch("intraday.watch.resolve_intraday_stocks", return_value=stocks),
+                patch("intraday.watch.build_snapshots", return_value=[snap]),
+                patch("intraday.watch._schedule_morning", return_value=(short_schedule, 60)),
+                patch("intraday.watch.sleep_until"),
+                patch("intraday.watch.is_trading_day", return_value=True),
+            ):
+                result = run_intraday_watch(["600519"], on_date=day, session="morning", resume=True)
+                self.assertEqual(result["outcome"], "ok")
+                loaded = load_intraday_segment(on_date=day, segment="morning")
+                self.assertEqual(len(loaded), 3)
+                self.assertEqual(loaded[0]["captured_at"], "2026-06-11 09:30:00")
+                self.assertEqual(loaded[1]["captured_at"], "2026-06-11 09:31:00")
+                self.assertEqual(loaded[2]["captured_at"], "2026-06-11 09:32:00")
+                self.assertTrue(loaded[2].get("is_final"))
+
+    def test_fresh_run_resets_partial_morning_points(self):
+        day = date(2026, 6, 11)
+        stocks = [StockItem(code="600519", name="茅台", group="我的", block_id="")]
+        snap = _mock_snapshot_row("600519", "2026-06-11 09:30:00")
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            with patch("intraday.series.DATA_DIR", data):
+                append_intraday_segment_point(
+                    [{"code": "600519"}],
+                    captured_at="2026-06-11 09:30:00",
+                    on_date=day,
+                    segment="morning",
+                )
+                append_intraday_segment_point(
+                    [{"code": "600519"}],
+                    captured_at="2026-06-11 09:31:00",
+                    on_date=day,
+                    segment="morning",
+                )
+            with (
+                patch("intraday.series.DATA_DIR", data),
+                patch("intraday.manifest.DATA_DIR", data),
+                patch("intraday.watch.resolve_intraday_stocks", return_value=stocks),
+                patch("intraday.watch.build_snapshots", return_value=[snap]),
+                patch("intraday.watch.sleep_until"),
+                patch("intraday.watch.is_trading_day", return_value=True),
+            ):
+                result = run_intraday_watch(["600519"], force=True, on_date=day, session="morning", resume=False)
+                self.assertEqual(result["outcome"], "ok")
+                loaded = load_intraday_segment(on_date=day, segment="morning")
+                self.assertEqual(len(loaded), 1)
+
+    def test_resume_all_skips_completed_auction(self):
+        day = date(2026, 6, 11)
+        stocks = [StockItem(code="600519", name="茅台", group="我的", block_id="")]
+        snap = _mock_snapshot_row("600519", "2026-06-11 09:30:00")
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            with (
+                patch("intraday.series.DATA_DIR", data),
+                patch("intraday.manifest.DATA_DIR", data),
+                patch("intraday.watch.resolve_intraday_stocks", return_value=stocks),
+                patch("intraday.watch.resolve_phases", return_value=["morning"]),
+                patch("intraday.watch.build_snapshots", return_value=[snap]),
+                patch("intraday.watch.run_auction_watch") as mock_auction,
+                patch("intraday.watch.sleep_until"),
+                patch("intraday.watch.is_trading_day", return_value=True),
+            ):
+                result = run_intraday_watch(["600519"], force=True, on_date=day, session="all", resume=True)
+                self.assertEqual(result["outcome"], "ok")
+                mock_auction.assert_not_called()
+                self.assertEqual(result.get("morning_point_count"), 1)
 
 
 class IntradaySimulateTests(unittest.TestCase):

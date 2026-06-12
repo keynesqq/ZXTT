@@ -67,7 +67,12 @@ def cmd_auction(args: argparse.Namespace) -> int:
         if not codes:
             print({"outcome": "error", "reason": "need_codes", "hint": "传 --codes，或先跑 quote query --all"})
             return 1
-        result = run_auction_watch(codes, force=args.force, on_date=_parse_date(args.date))
+        result = run_auction_watch(
+            codes,
+            force=args.force,
+            on_date=_parse_date(args.date),
+            resume=args.resume,
+        )
         ok = result.get("outcome") in ("ok", "skip")
     print(result)
     return 0 if ok else 1
@@ -599,6 +604,7 @@ def main() -> None:
     auction.add_argument("--codes", default="")
     auction.add_argument("--force", action="store_true")
     auction.add_argument("--date", default=None)
+    auction.add_argument("--resume", action="store_true", help="保留已采竞价点，续跑剩余时刻")
     auction.add_argument("--simulate", action="store_true")
 
     intraday = sub.add_parser("intraday", help="全天监控：竞价+正式交易（分段保存，竞价独立文件）")

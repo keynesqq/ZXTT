@@ -337,6 +337,9 @@ python run.py auction
 # 快速验通路（只采 1 点，不等 10 分钟）
 python run.py auction --force --codes 600519,000001
 
+# 崩溃后续跑（保留已采点，按时刻跳过）
+python run.py auction --resume
+
 # 离线模拟（无网络，开发验收）
 python run.py auction --simulate --date 2026-06-10
 ```
@@ -360,6 +363,7 @@ auction:
 | 场景 | 预期 |
 |------|------|
 | `--force` + 31 只 | 约 1 秒内，`stock_count: 31`，均有 `end_gap` |
+| `--resume` 且已有 partial | 保留旧点，只补剩余竞价时刻 |
 | 交易日完整跑 | 约 10 分钟（等时钟），`point_count: 21`，`shape_after_920` 非「数据不足」 |
 | `--simulate` | `outcome: ok`，生成 trend + series |
 
@@ -394,11 +398,12 @@ auction:
 | 场景 | 命令 |
 |------|------|
 | 自动续跑（跳过已完成段） | `python run.py intraday --resume` |
-| 只重采竞价 | `python run.py intraday --session auction` |
-| 只重采上午/下午 | `python run.py intraday --session morning` / `afternoon` |
+| 只重采竞价/上午/下午 | `--session auction` / `morning` / `afternoon`（加 `--resume` 时跳过已完成段） |
 | 验通路（各段 1 点） | `python run.py intraday --force` |
 
-`python run.py auction` 仍可用，等价于 `--session auction`。
+崩溃续跑优先用 **`intraday --resume`（`session=all`）**；单跑 `--session afternoon --resume` 不检查上午是否完整。
+
+`python run.py auction --resume` 仅续竞价；全天仍推荐 `intraday --resume`。
 
 **不做的事：**
 
@@ -416,6 +421,8 @@ auction:
 | `stocks.py` | 默认全自选去重 |
 | `series.py` | 正式交易分段 + 合并 |
 | `manifest.py` | `last_intraday_watch.json`（含 `phases_done`） |
+| `core/schedule_guard.py` | 段首等待、续跑按已采时刻裁剪 |
+| `core/phase_complete.py` | 各段完成判定 |
 | `auction/*` | 竞价 series + trend（早盘报告仍读 `auction_trend`） |
 
 **落盘：**
@@ -427,7 +434,7 @@ auction:
 | `data/intraday_series_{date}_morning.json` | 上午 121 点 |
 | `data/intraday_series_{date}_afternoon.json` | 下午 121 点 |
 | `data/intraday_series_{date}.json` | 正式交易合并（242 点） |
-| `data/last_intraday_watch.json` | 全天监控状态 |
+| `data/last_intraday_watch.json` | 全天监控状态（`outcome: running` 表示段间心跳） |
 | `data/last_auction_watch.json` | 竞价段状态（兼容旧逻辑） |
 
 ### 如何使用

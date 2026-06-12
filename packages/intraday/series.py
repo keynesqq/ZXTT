@@ -31,9 +31,13 @@ def reset_intraday_segment(*, on_date: date, segment: str) -> None:
 def reset_intraday_series(*, on_date: date) -> None:
     for segment in SEGMENTS:
         reset_intraday_segment(on_date=on_date, segment=segment)
-    merged = _merged_path(on_date)
-    if merged.is_file():
-        merged.unlink()
+    clear_merged_intraday_series(on_date=on_date)
+
+
+def clear_merged_intraday_series(*, on_date: date) -> None:
+    path = _merged_path(on_date)
+    if path.is_file():
+        path.unlink()
 
 
 def load_intraday_segment(*, on_date: date | None = None, segment: str) -> list[dict]:

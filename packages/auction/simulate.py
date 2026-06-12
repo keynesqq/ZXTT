@@ -8,7 +8,7 @@ from auction.manifest import save_watch_manifest
 from auction.mock import DEMO_DATE_ISO, build_mock_series_points, mock_stocks
 from auction.series import write_auction_series
 from auction.trajectory import build_auction_trends, write_auction_trend
-from auction.watch import _schedule_times
+from auction.schedule import auction_schedule_times as _schedule_times
 
 
 def _demo_date(on_date: date | None) -> date:

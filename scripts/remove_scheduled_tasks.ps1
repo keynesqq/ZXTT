@@ -1,5 +1,6 @@
 #Requires -Version 5.1
 $names = @(
+    "ZXTT-Intraday-Watch",
     "ZXTT-Auction-Watch",
     "ZXTT-Morning-Pre",
     "ZXTT-Morning-Report",
