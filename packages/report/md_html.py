@@ -12,11 +12,31 @@ _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _STRONG_TAG = re.compile(r"</?strong>", re.I)
 _CODE_IN_H3 = re.compile(r"^(\d{6})\s+(.+)$")
 _PUSH_SECTION = re.compile(r"【([^】]+)】")
+_SECTION_HEAD = re.compile(
+    r"^(\*\*)?【([^】]+)】(\*\*)?(?:\s*(.*))?$",
+    re.MULTILINE,
+)
 _PUSH_GLOBAL = frozenset({"环境", "仓位", "操作", "9:15素材", "超预期"})
 _PUSH_PORTFOLIO = frozenset({"我的", "想买的"})
+_PUSH_SUMMARY_HIDDEN = frozenset({"9:15素材"})
+_PUSH_SECTION_ORDER = (
+    "环境",
+    "仓位",
+    "超预期",
+    "操作",
+    "我的",
+    "想买的",
+    "观察",
+    "其它",
+    "重点",
+)
 _ANALYSIS_TIME = re.compile(r"\*\*分析时刻\*\*[：:]\s*(.+)$", re.MULTILINE)
+_ANALYSIS_TIME_PLAIN = re.compile(r"^分析时刻[：:]\s*(.+)$", re.MULTILINE)
 _STOCK_CODE_LEAD = re.compile(r"^(\d{6})\s+(.+)$")
+_PUSH_ITEM_CODE = re.compile(r"^\*\*(\d{6})\s+([^*]+)\*\*[：:]\s*(.*)$")
+_PUSH_ITEM_NAME_CODE = re.compile(r"^\*\*([^*（]+)（(\d{6})）\*\*[：:]\s*(.*)$")
 _LIST_ITEM = re.compile(r"^(\s*)[-*]\s+(.*)$")
+_LIST_BULLET = re.compile(r"^[-*]\s+(.*)$", re.MULTILINE)
 
 
 def _h3_with_anchor(line: str, *, as_summary: bool = False) -> str:
@@ -217,11 +237,76 @@ def _push_section_kind(label: str) -> str:
     return "watch"
 
 
+def _extract_analysis_time(text: str) -> tuple[str, str]:
+    m = _ANALYSIS_TIME.search(text)
+    if m:
+        time_text = m.group(1).strip()
+        cleaned = (text[: m.start()] + text[m.end() :]).strip()
+        return cleaned, time_text
+    lines: list[str] = []
+    time_text = ""
+    for line in text.splitlines():
+        pm = _ANALYSIS_TIME_PLAIN.match(line.strip())
+        if pm:
+            time_text = pm.group(1).strip()
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip(), time_text
+
+
+def _parse_push_sections(raw: str) -> tuple[str, str, list[tuple[str, str]]]:
+    text, analysis_time = _extract_analysis_time(raw.strip())
+    text = re.sub(r"\n---\s*$", "", text).strip()
+    matches = list(_SECTION_HEAD.finditer(text))
+    if not matches:
+        return text, analysis_time, []
+    lead = text[: matches[0].start()].strip()
+    sections: list[tuple[str, str]] = []
+    for i, m in enumerate(matches):
+        label = m.group(2).strip()
+        inline = (m.group(4) or "").strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end].strip()
+        if inline:
+            body = f"{inline}\n{body}".strip() if body else inline
+        if body == "---":
+            body = ""
+        sections.append((label, body))
+    return lead, analysis_time, sections
+
+
+def extract_push_section_body(text: str, label: str) -> str:
+    """取推送摘要某段正文（仅行首【label】）。"""
+    _, _, sections = _parse_push_sections((text or "").strip())
+    for sec_label, body in _prepare_push_sections(sections):
+        if sec_label == label:
+            return body.strip()
+    return ""
+
+
+def _prepare_push_sections(sections: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    order_idx = {name: i for i, name in enumerate(_PUSH_SECTION_ORDER)}
+    default = len(_PUSH_SECTION_ORDER)
+    kept = [(label, body) for label, body in sections if label not in _PUSH_SUMMARY_HIDDEN]
+    return sorted(kept, key=lambda item: order_idx.get(item[0], default))
+
+
 def _split_push_items(body: str) -> list[str]:
     items: list[str] = []
+    has_bullets = any(_LIST_BULLET.match(ln.strip()) for ln in body.splitlines() if ln.strip())
+    if has_bullets:
+        for line in body.splitlines():
+            m = _LIST_BULLET.match(line.strip())
+            if not m:
+                continue
+            content = m.group(1).strip()
+            if content and content != "---":
+                items.append(content)
+        return items
     for line in body.splitlines():
         line = line.strip()
-        if not line:
+        if not line or line == "---":
             continue
         for seg in re.split(r"[；;]", line):
             seg = seg.strip()
@@ -231,35 +316,50 @@ def _split_push_items(body: str) -> list[str]:
 
 
 def _strip_analysis_time(body: str) -> tuple[str, str]:
-    m = _ANALYSIS_TIME.search(body)
-    if not m:
-        return body, ""
-    time_text = m.group(1).strip()
-    cleaned = (body[: m.start()] + body[m.end() :]).strip()
-    return cleaned, time_text
+    return _extract_analysis_time(body)
+
+
+def _push_stock_li(code: str, text: str) -> str:
+    return (
+        f'<li class="push-stock-item">'
+        f'<span class="push-code">{html.escape(code)}</span>'
+        f'<span class="push-stock-text">{_inline_emphasis(text)}</span></li>'
+    )
 
 
 def _format_push_item(item: str) -> str:
-    m = _STOCK_CODE_LEAD.match(item.strip())
+    s = item.strip()
+    if not s:
+        return ""
+    m = _PUSH_ITEM_CODE.match(s)
     if m:
-        code, rest = m.group(1), m.group(2).strip()
-        return (
-            f'<li class="push-stock-item">'
-            f'<span class="push-code">{html.escape(code)}</span>'
-            f'<span class="push-stock-text">{_inline_emphasis(rest)}</span></li>'
-        )
-    return f'<li class="push-stock-item"><span class="push-stock-text">{_inline_emphasis(item)}</span></li>'
+        code, name, rest = m.group(1), m.group(2).strip(), m.group(3).strip()
+        text = f"{name}：{rest}" if rest else name
+        return _push_stock_li(code, text)
+    m = _PUSH_ITEM_NAME_CODE.match(s)
+    if m:
+        name, code, rest = m.group(1).strip(), m.group(2), m.group(3).strip()
+        text = f"{name}：{rest}" if rest else name
+        return _push_stock_li(code, text)
+    m = _STOCK_CODE_LEAD.match(s)
+    if m:
+        return _push_stock_li(m.group(1), m.group(2).strip())
+    return f'<li class="push-stock-item"><span class="push-stock-text">{_inline_emphasis(s)}</span></li>'
 
 
 def _format_push_body(label: str, body: str) -> tuple[str, str]:
     body, time_text = _strip_analysis_time(body)
     kind = _push_section_kind(label)
     if kind == "global":
+        if _LIST_BULLET.search(body):
+            inner = markdown_to_html(body)
+            return f'<div class="push-section-body push-section-prose">{inner}</div>', time_text
         return f'<div class="push-section-body">{_inline_emphasis(body)}</div>', time_text
-    items = _split_push_items(body)
-    if len(items) >= 2 or (items and _STOCK_CODE_LEAD.match(items[0])):
-        lis = "".join(_format_push_item(it) for it in items)
-        return f'<ul class="push-stock-list">{lis}</ul>', time_text
+    items = [it for it in _split_push_items(body) if it.strip() and it.strip() != "---"]
+    if items:
+        lis = "".join(x for it in items if (x := _format_push_item(it)))
+        if lis:
+            return f'<ul class="push-stock-list">{lis}</ul>', time_text
     return f'<div class="push-section-body">{_inline_emphasis(body)}</div>', time_text
 
 
@@ -268,25 +368,19 @@ def push_summary_to_html(text: str) -> str:
     raw = (text or "").strip()
     if not raw:
         return ""
-    if not _PUSH_SECTION.search(raw):
+    if not _SECTION_HEAD.search(raw):
         return f'<div class="push-summary-fallback">{markdown_to_html(raw)}</div>'
 
+    lead, analysis_time, sections = _parse_push_sections(raw)
+    sections = _prepare_push_sections(sections)
     sections_html: list[str] = []
-    analysis_time = ""
-    pos = 0
-    for m in _PUSH_SECTION.finditer(raw):
-        if m.start() > pos:
-            chunk = raw[pos : m.start()].strip()
-            if chunk:
-                sections_html.append(f'<p class="push-lead">{_inline_emphasis(chunk)}</p>')
-        label = m.group(1)
-        pos = m.end()
-        next_m = _PUSH_SECTION.search(raw, pos)
-        end = next_m.start() if next_m else len(raw)
-        body = raw[pos:end].strip()
-        pos = end
+    if lead:
+        sections_html.append(f'<p class="push-lead">{_inline_emphasis(lead)}</p>')
+    for label, body in sections:
+        if not body and label not in _PUSH_GLOBAL and label not in _PUSH_PORTFOLIO:
+            continue
         content, time_text = _format_push_body(label, body)
-        if time_text:
+        if time_text and not analysis_time:
             analysis_time = time_text
         kind = _push_section_kind(label)
         sections_html.append(
@@ -302,4 +396,9 @@ def push_summary_to_html(text: str) -> str:
     return f'<div class="push-summary">{"".join(sections_html)}{meta}</div>'
 
 
-__all__ = ["markdown_to_html", "markdown_sections_to_html", "push_summary_to_html"]
+__all__ = [
+    "extract_push_section_body",
+    "markdown_to_html",
+    "markdown_sections_to_html",
+    "push_summary_to_html",
+]

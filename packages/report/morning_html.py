@@ -5,7 +5,7 @@ import html
 import re
 from typing import Any
 
-from report.md_html import markdown_to_html, push_summary_to_html
+from report.md_html import extract_push_section_body, markdown_to_html, push_summary_to_html
 
 _STOCK_HEAD = re.compile(
     r'(<summary class="stock-heading" id="stock-(\d{6})"[^>]*>)(.*?)(</summary>)',
@@ -126,6 +126,10 @@ a { color: var(--accent); text-decoration: none; }
 }
 .env-seg.up { border-color: rgba(240,82,82,.3); color: #ffb4b4; }
 .env-seg.down { border-color: rgba(62,207,142,.3); color: #9ee8c0; }
+.env-seg.env-op {
+  flex: 1 1 100%; margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border);
+  color: #c8d4e6; font-size: .84rem; line-height: 1.55;
+}
 
 table.data { width: 100%; border-collapse: collapse; font-size: .88rem; }
 table.data th, table.data td {
@@ -190,6 +194,8 @@ details.accordion .inner {
   border: 1px solid rgba(42,56,79,.8); font-size: .88rem;
 }
 .push-code { font-family: ui-monospace, monospace; font-weight: 700; color: var(--accent); margin-right: 8px; }
+.push-section-prose .prose-list { margin: 0; padding-left: 1.1rem; }
+.push-section-prose .prose-list li { margin: 4px 0; }
 .push-meta {
   margin: 4px 0 0; padding-top: 12px; border-top: 1px dashed var(--border);
   font-size: .78rem; color: var(--muted); text-align: right;
@@ -317,12 +323,17 @@ def _hero_meta_chips(rc: dict[str, Any]) -> str:
         chips.append(f'<span class="chip err">AI 未就绪</span>')
     if rc.get("point_count"):
         chips.append(f'<span class="chip">{int(rc["point_count"])} 采样点</span>')
-    if rc.get("sla_ms") is not None:
-        ok = rc.get("sla_ok")
-        cls = "sla-ok" if ok else "sla-err"
-        mark = "✓" if ok else "✗"
-        chips.append(f'<span class="chip {cls}">SLA {int(rc["sla_ms"])}ms {mark}</span>')
     return "".join(chips)
+
+
+def _operation_hint(summary_raw: str) -> str:
+    body = extract_push_section_body(summary_raw, "操作")
+    if not body:
+        return ""
+    first = body.split("。", 1)[0].strip()
+    if first and not first.endswith("。"):
+        first += "。"
+    return first
 
 
 def _env_strip_html(open_m: dict[str, Any], rc: dict[str, Any]) -> str:
@@ -344,6 +355,9 @@ def _env_strip_html(open_m: dict[str, Any], rc: dict[str, Any]) -> str:
             )
         else:
             segs_html.append(f'<span class="env-seg">{html.escape(name)} —</span>')
+    op_hint = _operation_hint(str(rc.get("ai_summary_raw") or ""))
+    if op_hint:
+        segs_html.append(f'<span class="env-seg env-op">{html.escape(op_hint)}</span>')
     if not segs_html:
         return ""
     session = html.escape(str(rc.get("session_label") or "集合竞价结束"))
