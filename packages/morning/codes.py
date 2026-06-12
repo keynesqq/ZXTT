@@ -28,7 +28,7 @@ def codes_from_quote(day: date) -> tuple[list[str], str]:
                 codes.append(code)
         if codes:
             return codes, f"quote_query_{d.isoformat()}.json"
-    stocks = load_stocks(for_schedule=False)
+    stocks = load_stocks()
     if stocks:
         codes = []
         seen: set[str] = set()

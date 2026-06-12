@@ -17,6 +17,38 @@ def _parse_date(raw: str | None) -> date | None:
     return date.fromisoformat(raw)
 
 
+def cmd_intraday(args: argparse.Namespace) -> int:
+    from core.config import normalize_code
+
+    if args.simulate:
+        from intraday.simulate import run_intraday_simulate
+
+        result = run_intraday_simulate(on_date=_parse_date(args.date))
+        ok = result.get("outcome") == "ok"
+    else:
+        from intraday.stocks import resolve_intraday_stocks
+        from intraday.watch import run_intraday_watch
+
+        cli_codes = [normalize_code(c.strip()) for c in (args.codes or "").split(",") if c.strip()] or None
+        stocks = resolve_intraday_stocks(cli_codes, on_date=_parse_date(args.date))
+        if not stocks:
+            print({
+                "outcome": "error",
+                "reason": "need_codes",
+                "hint": "请配置 ths.account_dir（默认可读全自选），或传 --codes",
+            })
+            return 1
+        result = run_intraday_watch(
+            [s.code for s in stocks],
+            force=args.force,
+            on_date=_parse_date(args.date),
+            session=args.session,
+        )
+        ok = result.get("outcome") in ("ok", "skip")
+    print(result)
+    return 0 if ok else 1
+
+
 def cmd_auction(args: argparse.Namespace) -> int:
     from core.config import normalize_code
 
@@ -568,6 +600,13 @@ def main() -> None:
     auction.add_argument("--date", default=None)
     auction.add_argument("--simulate", action="store_true")
 
+    intraday = sub.add_parser("intraday", help="盘中分钟序列（上午+下午，分段保存后合并）")
+    intraday.add_argument("--codes", default="")
+    intraday.add_argument("--force", action="store_true")
+    intraday.add_argument("--date", default=None)
+    intraday.add_argument("--simulate", action="store_true")
+    intraday.add_argument("--session", default="all", choices=("all", "morning", "afternoon"))
+
     args = parser.parse_args()
     if args.cmd == "cls" and args.cls_cmd == "collect":
         raise SystemExit(cmd_cls_collect(args))
@@ -601,6 +640,8 @@ def main() -> None:
         raise SystemExit(cmd_generate(args))
     if args.cmd == "auction":
         raise SystemExit(cmd_auction(args))
+    if args.cmd == "intraday":
+        raise SystemExit(cmd_intraday(args))
     raise SystemExit(2)
 
 

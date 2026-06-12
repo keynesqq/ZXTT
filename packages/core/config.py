@@ -29,6 +29,10 @@ def auction_cfg() -> dict:
     return load_config().get("auction") or {}
 
 
+def intraday_cfg() -> dict:
+    return load_config().get("intraday") or {}
+
+
 def quote_cfg() -> dict:
     return load_config().get("quote") or {}
 

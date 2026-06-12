@@ -1,7 +1,7 @@
 # 已打包模块说明（PM 细改版）
 
 > 以 **`run.py` 现有命令** 为准；库内其它代码可 import，但无 CLI。  
-> 更新：2026-06-10（8 个基础模块 + 午间报告 + 晚间报告）
+> 更新：2026-06-12（9 个基础模块 + 午间报告 + 晚间报告）
 
 ---
 
@@ -13,6 +13,7 @@
 | 行情查询 `quote` | `python run.py quote query` | 即时查全字段行情，分层落盘（事实+板块归属） |
 | 公告查询 `announcement` | `python run.py announcement query` | 即时查公告，查完落盘 |
 | 集合竞价 `auction` | `python run.py auction` | 传入股票列表，竞价时段定时采走势 |
+| **盘中分钟序列** `intraday` | `python run.py intraday` | 全自选每分钟采行情；上午+下午分段保存后合并 |
 | 资讯查询 `news` | `python run.py news query` | 即时查资讯/观点/研报/行业，查完落盘 |
 | **大盘短线生态** `ecosystem` | `python run.py ecosystem collect` | 东财三池 + 汇总 + 池子参考分（**非**最终大盘情绪） |
 | **指数快照** `index` | `python run.py index collect` | 上证/深证/创业板等涨跌与量能，独立事实源 |
@@ -24,7 +25,7 @@
 
 **命名说明：** 产品名 **大盘短线生态**；命令 **`ecosystem collect`**（`market collect` 为兼容别名）。落盘路径暂保留 `data/market_sentiment/` 以兼容老 schema。
 
-**CLI 范围：** 上表 10 项为 `run.py` 主命令。午间 / 晚间另提供分步：`collect/preprocess/generate --slot midday|evening`。无 `collect health` / `feeds collect` / `quote snapshot` 等编排命令。
+**CLI 范围：** 上表 11 项为 `run.py` 主命令。午间 / 晚间另提供分步：`collect/preprocess/generate --slot midday|evening`。无 `collect health` / `feeds collect` / `quote snapshot` 等编排命令。
 
 **盘后建议顺序（手动）：**
 
@@ -373,7 +374,98 @@ auction:
 
 ---
 
-## 5. 资讯查询 `news query`
+## 5. 盘中分钟序列 `intraday`
+
+### 做什么
+
+交易日 **上午 9:30–11:30**、**下午 13:00–15:00**，对自选池个股各 **每分钟**采一次**全字段行情**（与 `quote query` 同口径：价量、均线、涨跌停、K 线形态等）。
+
+**默认股票池：** `config.yaml` → `ths.analyze_blocks` 下**全部自选**，同股多板块时**只采一条**（与 `quote query --all` 去重规则一致）。也可 `--codes` 指定。
+
+**分段与合并：**
+
+1. 上午采完 → 写入 `intraday_series_{date}_morning.json`
+2. 程序等到 13:00 继续下午段
+3. 下午采完 → 写入 `intraday_series_{date}_afternoon.json`，并合并为 `intraday_series_{date}.json`（全天 242 点）
+
+**不做的事：**
+
+- 无分钟 K 线 OHLC 序列导出（只有快照字段 + `intraday_shape`）
+- 不含 feeds、财联社、竞价走势汇总
+
+### 怎么做的
+
+**代码位置：** `packages/intraday/`
+
+| 组件 | 职责 |
+|------|------|
+| `watch.py` | 两段调度、等到时刻、拉行情、合并 |
+| `stocks.py` | 默认全自选去重；CLI / quote 缓存 / config 回退 |
+| `series.py` | 分段 series + 合并文件 |
+| `manifest.py` | `last_intraday_watch.json` |
+| `simulate.py` / `mock.py` | 离线验通路 |
+| `packages/quote/snapshot/build.py` | 双源全字段快照（循环内 `record_manifest=False`） |
+
+**采样流程：**
+
+1. 解析股票池（默认 `load_stocks()` + `dedupe_stocks_by_code`）。
+2. 非 `--force`：按时刻表 sleep 到点，每分钟 `build_snapshots` 写入对应分段文件。
+3. `--force`：上午/下午各采 1 点并立即合并（验通路）。
+4. `--session morning|afternoon`：只跑单段；下午结束后与已有上午合并。
+
+**落盘：**
+
+| 文件 | 说明 |
+|------|------|
+| `data/intraday_series_{date}_morning.json` | 上午原始序列（121 点） |
+| `data/intraday_series_{date}_afternoon.json` | 下午原始序列（121 点） |
+| `data/intraday_series_{date}.json` | **合并主文件**（schema v2，`point_count: 242`） |
+| `data/last_intraday_watch.json` | 最近一次运行状态 |
+
+### 如何使用
+
+```bash
+# 默认：全自选，跑全天（约 4 小时，需交易日 9:30 前启动）
+python run.py intraday
+
+# 指定少数几只
+python run.py intraday --codes 600519,000001
+
+# 只跑上午或下午
+python run.py intraday --session morning
+python run.py intraday --session afternoon
+
+# 快速验通路（各 1 点 + 合并）
+python run.py intraday --force
+
+# 离线模拟（无网络）
+python run.py intraday --simulate --date 2026-06-10
+```
+
+**配置**（`config.yaml` → `intraday` 段）：
+
+```yaml
+intraday:
+  interval_sec: 60
+  morning_start: "09:30:00"
+  morning_end: "11:30:00"
+  afternoon_start: "13:00:00"
+  afternoon_end: "15:00:00"
+  codes:          # 仅同花顺/quote 均不可用时回退
+  - "600519"
+```
+
+**验收标准：**
+
+| 场景 | 预期 |
+|------|------|
+| `--simulate` | `outcome: ok`，`merged_point_count: 242`，三份 JSON 均存在 |
+| `--force` + 全自选 | 约数秒，`stock_count` = 去重自选只数，`merged_point_count: 2` |
+| 交易日 `--session all` | 上午文件在 11:30 后完整；合并文件在 15:00 后 `point_count: 242` |
+
+---
+
+## 6. 资讯查询 `news query`
 
 ### 做什么
 
@@ -392,6 +484,7 @@ auction:
 - 价量/均线 → `quote query`
 - 财联社长文 → `cls collect`
 - 竞价走势 → `auction`
+- 盘中分钟序列 → `intraday`
 
 ### 怎么做的
 
@@ -464,7 +557,7 @@ python run.py news query --codes 600519 --no-industry
 
 ---
 
-## 6. 大盘短线生态 `ecosystem`
+## 7. 大盘短线生态 `ecosystem`
 
 ### 模块命名
 
@@ -571,7 +664,7 @@ python run.py market collect --force --date 2026-06-09
 
 ---
 
-## 7. 指数快照 `index`
+## 8. 指数快照 `index`
 
 ### 模块命名
 
@@ -686,7 +779,7 @@ python run.py index collect --force --slot open --date 2026-06-10
 
 ---
 
-## 8. 大盘资金流 `flow`
+## 9. 大盘资金流 `flow`
 
 ### 模块命名
 
@@ -806,7 +899,7 @@ python run.py flow collect --force --slot midday --date 2026-06-10
 
 ---
 
-## 9. 22 点晚间报告 `evening`
+## 10. 22 点晚间报告 `evening`
 
 ### 做什么
 
@@ -895,7 +988,7 @@ python run.py generate --slot evening --phase render
 
 ---
 
-## 10. 午间报告 `midday`
+## 11. 午间报告 `midday`
 
 ### 做什么
 
@@ -1003,7 +1096,7 @@ python run.py generate --slot midday --phase render
 - **cls**：媒体侧热度、风口、五篇长文。  
 - **index**：指数涨跌事实，防「指数红、情绪弱」。  
 - **flow**：北向/主力/行业/自选资金事实，与指数、生态对照。  
-- **auction / quote / announcement / news**：个股维度；`quote query` 为分层落盘，join 用 `load_joined_quote_rows()`；不参与大盘 JSON 嵌套。
+- **auction / intraday / quote / announcement / news**：个股维度；`quote query` 为分层落盘，join 用 `load_joined_quote_rows()`；不参与大盘 JSON 嵌套。
 
 ---
 

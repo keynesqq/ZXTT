@@ -25,6 +25,17 @@ auction:
   tier_groups:
   - 我的
   - 想买的
+intraday:
+  interval_sec: 60
+  morning_start: "09:30:00"
+  morning_end: "11:30:00"
+  afternoon_start: "13:00:00"
+  afternoon_end: "15:00:00"
+  watch_start: "09:30:00"   # 兼容旧键，等同 morning_start
+  watch_end: "11:30:00"
+  codes:          # 仅 quote_query/自选不可用时回退
+  - "600519"
+  - "000001"
 index:
   enabled: true
   symbols:

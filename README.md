@@ -1,6 +1,6 @@
 # ZXTT
 
-A 股数据采集工具集，**8 个基础采集模块** + **午间 / 晚间报告**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)。
+A 股数据采集工具集，**9 个基础采集模块** + **午间 / 晚间报告**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)。
 
 ## 安装
 
@@ -12,7 +12,7 @@ copy config.example.yaml config.yaml
 
 `config.yaml` 可只配 `legacy.zxreport_config` 指向老项目 `ZXReport/config.yaml`，只读复用同花顺路径与自选板块。
 
-## 八个命令
+## 九个命令
 
 | 模块 | 命令 |
 |------|------|
@@ -20,12 +20,15 @@ copy config.example.yaml config.yaml
 | 行情查询 | `python run.py quote query --codes 600519` |
 | 公告查询 | `python run.py announcement query --codes 600519` |
 | 集合竞价 | `python run.py auction --codes 600519` |
+| **盘中分钟序列** | `python run.py intraday` |
 | 资讯查询 | `python run.py news query --codes 600519` |
 | 大盘短线生态 | `python run.py ecosystem collect` |
 | 指数快照 | `python run.py index collect` |
 | 大盘资金流 | `python run.py flow collect` |
 
 `market collect` 为 `ecosystem collect` 的兼容别名。`market collect --articles` 已废弃，请改用 `cls collect --articles`。
+
+**盘中分钟序列**（默认全自选、同股只采一次）：上午 9:30–11:30 与下午 13:00–15:00 各每分钟采全字段行情，分段落盘后合并。验通路：`python run.py intraday --simulate`；立即 1 点：`python run.py intraday --force`。详文见 [`docs/packaged-modules.md`](docs/packaged-modules.md) §5。
 
 ## 盘后采集（手动顺序）
 
@@ -84,4 +87,4 @@ python -m unittest discover -s tests -v
 
 ## 产出目录
 
-运行时 JSON 写入 `data/`（如 `cls_finance/`、`market_flow/`、`quote_query_{date}.json` 等）。
+运行时 JSON 写入 `data/`（如 `cls_finance/`、`market_flow/`、`quote_query_{date}.json`、`intraday_series_{date}.json` 等）。
