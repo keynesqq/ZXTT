@@ -65,6 +65,11 @@ a { color: var(--accent); text-decoration: none; }
 .chip.accent { background: var(--accent-dim); border-color: rgba(79,140,255,.35); color: #a8c7ff; }
 .chip.sla-ok { border-color: rgba(62,207,142,.35); color: #9ee8c0; }
 .chip.sla-err { border-color: rgba(240,82,82,.4); color: #ffb4b4; }
+.health-bar {
+  margin-top: 14px; padding: 10px 14px; border-radius: var(--radius);
+  background: rgba(245,166,35,.08); border: 1px solid rgba(245,166,35,.25);
+  font-size: .88rem; color: #ffd08a;
+}
 .alert { margin-top: 10px; padding: 10px 14px; border-radius: var(--radius); font-size: .88rem; }
 .alert-warn { background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.3); color: #ffd08a; }
 .alert-err { background: rgba(240,82,82,.1); border: 1px solid rgba(240,82,82,.3); color: #ffb4b4; }
@@ -385,6 +390,8 @@ def _hero_html(rc: dict[str, Any]) -> str:
 
 def _alerts_html(rc: dict[str, Any]) -> str:
     parts: list[str] = []
+    if rc.get("health_brief"):
+        parts.append(f'<div class="health-bar">{html.escape(str(rc["health_brief"]))}</div>')
     if rc.get("missing_codes"):
         codes = ", ".join(str(c) for c in rc["missing_codes"])
         parts.append(f'<div class="alert alert-warn">漏股 {len(rc["missing_codes"])} 只：{html.escape(codes)}</div>')
@@ -545,6 +552,7 @@ def _summary_modal(rc: dict[str, Any]) -> str:
 def build_morning_page(rc: dict[str, Any]) -> str:
     checks = rc.get("checks") or {}
     rows = checks.get("rows") or []
+    open_market = rc.get("open_market") or {}
     trade_date = html.escape(str(rc.get("trade_date") or ""))
     generated = html.escape(str(rc.get("generated_at") or rc.get("context_as_of") or ""))
     return f"""<!DOCTYPE html>
@@ -558,7 +566,7 @@ def build_morning_page(rc: dict[str, Any]) -> str:
 <body>
 <div class="wrap">
 {_hero_html(rc)}
-{_env_strip_html(rc.get("open_market") or {{}}, rc)}
+{_env_strip_html(open_market, rc)}
 <section id="panel-analysis" class="panel">{_analysis_html(rc, rows)}</section>
 <p class="footer-note">ZXTT · 生成于 {generated}</p>
 {_summary_modal(rc)}

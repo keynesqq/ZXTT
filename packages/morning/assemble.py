@@ -10,7 +10,9 @@ from core.context_as_of import now_iso
 from core.io import atomic_write_text
 from core.paths import DATA_DIR
 from core.trading_calendar import previous_trading_day
-from morning.checks import build_checks, load_evening_ai, save_checks
+from morning.checks import build_checks, load_evening_ai, load_evening_expectations, save_checks
+from morning.evening_ref import merge_evening_into_row, stock_tier
+from morning.health import build_health
 from morning.pre_format import format_stock_prompt_line
 
 _CTX_DIR = DATA_DIR / "morning_context"
@@ -55,23 +57,44 @@ def build_morning_context(
     prev_td = previous_trading_day(calendar_date)
     evening_ai = load_evening_ai(prev_td) if prev_td else {}
     evening_summary = (evening_ai.get("summary") or "").strip()
+    evening_expectations = load_evening_expectations(calendar_date)
+    exp_stocks = evening_expectations.get("stocks") or {}
 
     stocks_prompt: list[dict[str, Any]] = []
     for row in checks.get("rows") or []:
-        tier = "tier0" if row.get("primary_stance") in ("holding", "candidate") else (
-            "tier1_star" if row.get("highlight") else "tier1"
-        )
-        line = format_stock_prompt_line(row)
+        code = str(row.get("code") or "")
+        merged = merge_evening_into_row(row, exp_stocks.get(code) or {})
+        tier = stock_tier(merged)
+        line = format_stock_prompt_line(merged)
         stocks_prompt.append(
             {
-                "code": row.get("code"),
-                "name": row.get("name"),
-                "stance_hint": row.get("primary_stance"),
+                "code": merged.get("code"),
+                "name": merged.get("name"),
+                "stance_hint": merged.get("primary_stance"),
                 "tier": tier,
                 "prompt_line": line,
-                "highlight": row.get("highlight"),
+                "highlight": merged.get("highlight"),
             }
         )
+        # 回写 enriched 字段供 prompt_build 核对表使用
+        row.update(
+            {
+                "discipline": merged.get("discipline") or "",
+                "check_925": merged.get("check_925") or "",
+                "evening_recap": merged.get("evening_recap") or "",
+            }
+        )
+
+    health = build_health(
+        calendar_date=calendar_date,
+        auction_trend=auction,
+        morning_pre=morning_pre,
+        checks=checks,
+        open_market=open_market,
+        evening_summary=evening_summary,
+        prev_trade_date=prev_td.isoformat() if prev_td else "",
+        evening_expectations=evening_expectations,
+    )
 
     ctx = {
         "schema_version": 1,
@@ -82,16 +105,18 @@ def build_morning_context(
             "context_as_of": now_iso(),
             "code_count": len(stocks_prompt),
             "point_count": auction.get("point_count"),
-            "evening_summary": evening_summary[:800],
+            "evening_summary": evening_summary,
         },
+        "evening_expectations": evening_expectations,
         "morning_pre": morning_pre,
         "auction_trend": auction,
         "checks": checks,
         "open_market": open_market,
+        "health": health,
         "prompt": {
             "priority_instructions": (
-                "【报告类型】开盘核对卡 | 【数据】昨晚预期+9:15素材+竞价走势 | "
-                "【目标】9:30起前30分钟纪律\n"
+                "【报告类型】开盘核对卡 | 【数据】昨晚结构化预期(expectations)+推送摘要+9:15素材+竞价 | "
+                "【目标】9:30起前30分钟纪律；对照 [昨晚结构化预期] 核对，无 9:15 新证据勿推翻昨晚结论\n"
                 "【我的】【想买的】推送块须逐只覆盖 tier0 列表每一只，不可遗漏。\n"
                 "素材=refresh 且列有新素材标题时，正文须引用该标题，禁止写「无新公告/资讯」。\n"
                 "我的/想买的：短评2-4句；highlight升格短评；其余默认一句。\n"

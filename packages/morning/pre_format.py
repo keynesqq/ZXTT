@@ -23,7 +23,7 @@ def format_pre_material(*, status: str, titles: list[str] | None) -> str:
     return ""
 
 
-def format_stock_prompt_line(row: dict[str, Any]) -> str:
+def format_stock_prompt_line(row: dict[str, Any], *, include_evening_recap: bool = True) -> str:
     titles = row.get("pre_titles") or []
     pre_bit = format_pre_material(status=str(row.get("pre_status") or ""), titles=titles)
     parts = [
@@ -33,9 +33,25 @@ def format_stock_prompt_line(row: dict[str, Any]) -> str:
         f"判定={row.get('verdict')}",
         f"素材={row.get('pre_status')}",
     ]
+    discipline = str(row.get("discipline") or "").strip()
+    if discipline:
+        parts.append(f"纪律={discipline}")
+    check = str(row.get("check_925") or "").strip()
+    if check:
+        parts.append(f"9:25核对={check}")
+    recap = str(row.get("evening_recap") or "").strip()
+    if include_evening_recap and recap:
+        parts.append(f"昨晚={_clip_recap(recap, 120)}")
     if pre_bit:
         parts.append(pre_bit)
     return " | ".join(parts)
+
+
+def _clip_recap(text: str, n: int) -> str:
+    t = " ".join(text.split())
+    if len(t) <= n:
+        return t
+    return t[: max(0, n - 1)] + "…"
 
 
 __all__ = ["format_pre_material", "format_stock_prompt_line"]

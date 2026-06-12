@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "packages"))
 from morning.checks import build_checks, match_verdict
 from morning.feeds_fingerprint import decide_feeds_status
 from morning.feeds_merge import merge_feeds
+from morning.health import build_health
 from morning.pre_format import format_stock_prompt_line
 from morning.prompt_build import build_morning_user_prompt
 from morning.wait_auction import wait_auction_ready
@@ -22,6 +23,7 @@ from auction.series import append_auction_series_point
 from quote.auction_snap import AuctionSnap
 from ai.parse import split_ai_report, codes_in_body, resolve_ai_report_fields
 from report.morning_html import build_morning_page
+from report.midday_html import build_midday_page
 
 
 class MorningChecksTest(unittest.TestCase):
@@ -97,6 +99,134 @@ class MorningFeedsTest(unittest.TestCase):
 
 
 class MorningPromptTest(unittest.TestCase):
+    def test_merge_fills_empty_discipline_from_expectations(self):
+        from morning.evening_ref import merge_evening_into_row
+
+        merged = merge_evening_into_row(
+            {"code": "600519", "discipline": ""},
+            {"discipline": "不追", "check_925": "看均价"},
+        )
+        self.assertEqual(merged["discipline"], "不追")
+        self.assertEqual(merged["check_925"], "看均价")
+
+    def test_evening_block_uses_checks_expected_open(self):
+        from morning.evening_ref import format_evening_stock_block
+
+        block = format_evening_stock_block(
+            code="600519",
+            name="茅台",
+            row={"expected_open": "偏高开"},
+            exp_stock={"expected_open": ""},
+            tier="tier0",
+        )
+        self.assertIn("开盘预期=偏高开", block)
+
+    def test_tier0_prompt_line_omits_recap_duplicate(self):
+        row = {
+            "code": "600010",
+            "expected_open": "偏低开",
+            "end_gap": -1.2,
+            "shape_after_920": "阴",
+            "verdict": "符合",
+            "pre_status": "reuse",
+            "evening_recap": "大利空待核实",
+        }
+        self.assertNotIn("昨晚=", format_stock_prompt_line(row, include_evening_recap=False))
+        self.assertIn("昨晚=", format_stock_prompt_line(row, include_evening_recap=True))
+
+    def test_health_skips_expectation_warn_when_ai_fields_present(self):
+        cal = date(2026, 6, 12)
+        checks = {
+            "rows": [{"code": "600519", "primary_stance": "holding", "expected_open": ""}]
+        }
+        health = build_health(
+            calendar_date=cal,
+            auction_trend={"point_count": 21, "stocks": [{"code": "600519"}]},
+            morning_pre={"summary": {"failed": 0}, "by_code": {"600519": {"item_counts": {"公告": 1}}}},
+            checks=checks,
+            open_market={"prev_limit_count": 10, "warnings": []},
+            evening_summary="摘要",
+            prev_trade_date="2026-06-11",
+            evening_expectations={
+                "stocks": {
+                    "600519": {"ai_fields": {"持仓": "观望为主"}},
+                }
+            },
+        )
+        self.assertNotIn("开盘预期缺失", health["health_brief"])
+
+    def test_prompt_line_includes_evening_and_discipline(self):
+        row = {
+            "code": "600010",
+            "expected_open": "偏低开",
+            "end_gap": -1.2,
+            "shape_after_920": "一路走弱",
+            "verdict": "符合",
+            "pre_status": "reuse",
+            "discipline": "观望等事故结论",
+            "evening_recap": "大利空待核实：事故调查中",
+        }
+        line = format_stock_prompt_line(row)
+        self.assertIn("纪律=观望等事故结论", line)
+        self.assertIn("昨晚=", line)
+        self.assertIn("事故", line)
+
+    def test_evening_expectations_section_in_prompt(self):
+        ctx = {
+            "meta": {
+                "context_as_of": "2026-06-12 09:25:06",
+                "calendar_date": "2026-06-12",
+                "evening_summary": "【环境】低开",
+            },
+            "morning_pre": {"summary": {"refresh": 0, "reuse": 1, "no_new": 0, "failed": 0}},
+            "checks": {
+                "calendar_date": "2026-06-12",
+                "rows": [
+                    {
+                        "code": "600010",
+                        "name": "包钢股份",
+                        "groups": ["我的"],
+                        "primary_stance": "holding",
+                        "expected_open": "",
+                        "end_gap": -1.29,
+                        "shape_after_920": "阴",
+                        "verdict": "符合",
+                        "pre_status": "reuse",
+                        "discipline": "",
+                        "check_925": "",
+                    }
+                ],
+            },
+            "evening_expectations": {
+                "source_trade_date": "2026-06-11",
+                "meta": {
+                    "l1_axes": {
+                        "axes": {
+                            "pool": {"signal": "中", "score": 63, "limit_up": 69, "broken_limit": 30},
+                            "breadth": {"market_heat": 23.0, "turnover": "2.55万亿", "rise_count": 100, "fall_count": 4000},
+                        }
+                    },
+                    "l2_mainlines": [{"name": "小金属"}],
+                },
+                "stocks": {
+                    "600010": {
+                        "expected_open": "",
+                        "discipline": "",
+                        "check_925": "",
+                        "ai_fields": {"大利空·待核实": "板材厂事故仍在调查"},
+                        "critical": ["事故调查中"],
+                    }
+                },
+            },
+            "prompt": {"priority_instructions": "", "stocks": []},
+        }
+        prompt = build_morning_user_prompt(ctx)
+        self.assertIn("[昨晚结构化预期]", prompt)
+        self.assertIn("600010 包钢股份", prompt)
+        self.assertIn("板材厂事故", prompt)
+        self.assertIn("重大事件=", prompt)
+        self.assertIn("池子中", prompt)
+
     def test_prompt_line_includes_refresh_titles(self):
         row = {
             "code": "000021",
@@ -113,9 +243,10 @@ class MorningPromptTest(unittest.TestCase):
 
     def test_user_prompt_lists_refresh_and_tier0(self):
         ctx = {
-            "meta": {"context_as_of": "2026-06-12 09:25:06", "evening_summary": "昨晚摘要"},
+            "meta": {"context_as_of": "2026-06-12 09:25:06", "calendar_date": "2026-06-12", "evening_summary": "昨晚摘要"},
             "morning_pre": {"summary": {"refresh": 1, "reuse": 0, "no_new": 0, "failed": 0}},
             "checks": {
+                "calendar_date": "2026-06-12",
                 "rows": [
                     {
                         "code": "000021",
@@ -131,6 +262,7 @@ class MorningPromptTest(unittest.TestCase):
                     }
                 ]
             },
+            "evening_expectations": {},
             "prompt": {"priority_instructions": "", "stocks": []},
         }
         prompt = build_morning_user_prompt(ctx)
@@ -138,6 +270,46 @@ class MorningPromptTest(unittest.TestCase):
         self.assertIn("深科技：测试", prompt)
         self.assertIn("[推送 tier0 须逐只覆盖]", prompt)
         self.assertIn("000021 深科技", prompt)
+
+
+class MorningHealthTest(unittest.TestCase):
+    def test_health_brief_uses_morning_data_only(self):
+        cal = date(2026, 6, 12)
+        checks = {
+            "prev_trade_date": "2026-06-11",
+            "rows": [
+                {"code": "600519", "primary_stance": "holding", "expected_open": ""},
+                {"code": "000021", "primary_stance": "candidate", "expected_open": "偏低开"},
+            ],
+        }
+        morning_pre = {
+            "summary": {"failed": 1},
+            "by_code": {
+                "600519": {"item_counts": {"公告": 0}},
+                "000021": {"item_counts": {"公告": 2}},
+            },
+        }
+        health = build_health(
+            calendar_date=cal,
+            auction_trend={"point_count": 1, "stocks": [{"code": "600519"}]},
+            morning_pre=morning_pre,
+            checks=checks,
+            open_market={"warnings": ["指数开盘: timeout"]},
+            evening_summary="",
+            prev_trade_date="2026-06-11",
+        )
+        brief = health["health_brief"]
+        self.assertIn("昨晚推送摘要缺失", brief)
+        self.assertIn("开盘预期缺失", brief)
+        self.assertIn("竞价序列不完整", brief)
+        self.assertIn("竞价缺 1 只", brief)
+        self.assertIn("9:15素材采集失败 1 只", brief)
+        self.assertIn("9:25开盘环境采集异常", brief)
+        self.assertIn("1 只近3日无公告", brief)
+        self.assertNotIn("大盘主力", brief)
+        self.assertNotIn("行业资金", brief)
+        self.assertNotIn("自选主力", brief)
+        self.assertEqual(health["slot"], "morning")
 
 
 class MorningHtmlTest(unittest.TestCase):
@@ -190,6 +362,38 @@ class MorningHtmlTest(unittest.TestCase):
         self.assertNotIn("9:15 素材", html_text)
         self.assertNotIn("观点:深科技：测试", html_text)
         self.assertNotIn("核对表", html_text)
+
+    def test_health_bar_shown_when_brief_present(self):
+        html_text = build_morning_page(
+            {
+                "trade_date": "2026-06-12",
+                "health_brief": "大盘主力不可用；自选主力可用；1 只近3日无公告。",
+                "checks": {"rows": []},
+                "open_market": {},
+                "ai_ok": True,
+                "ai_summary_raw": "",
+                "ai_body_raw": "",
+            }
+        )
+        self.assertIn("health-bar", html_text)
+        self.assertIn("大盘主力不可用", html_text)
+
+
+class MiddayHtmlHealthTest(unittest.TestCase):
+    def test_health_bar_shown_when_brief_present(self):
+        html_text = build_midday_page(
+            {
+                "trade_date": "2026-06-11",
+                "health_brief": "大盘主力不可用；行业资金不可用；17 只近3日无公告。",
+                "ai_ok": True,
+                "ai_summary_raw": "",
+                "ai_body_raw": "",
+                "snapshot_rows": [],
+                "group_order": [],
+            }
+        )
+        self.assertIn("health-bar", html_text)
+        self.assertIn("17 只近3日无公告", html_text)
 
 
 class WaitAuctionRebuildTest(unittest.TestCase):

@@ -148,19 +148,27 @@ def _code_health_row(
 def _health_brief(trust: dict[str, bool], summary: dict[str, Any]) -> str:
     parts: list[str] = []
     if not trust.get("market_main_flow"):
-        parts.append("大盘主力不可用")
+        parts.append("上午盘大盘主力不可用")
     if not trust.get("sector_flow"):
-        parts.append("行业资金不可用")
+        parts.append("上午盘行业资金不可用")
     if trust.get("northbound_suspicious"):
-        parts.append("北向存疑")
+        parts.append("上午盘北向存疑")
     if not trust.get("intraday_digest_ok"):
         parts.append("上午分钟监控摘要缺失")
     if trust.get("watchlist_flow"):
-        parts.append("自选主力可用")
+        parts.append("上午盘自选主力可用")
     ann_empty = int(summary.get("ann_empty_codes") or 0)
     if ann_empty:
         parts.append(f"{ann_empty} 只近3日无公告")
     return "；".join(parts) + "。" if parts else "数据整体可用。"
+
+
+def refresh_health_brief(health: dict[str, Any]) -> str:
+    trust = health.get("trust_flags") or {}
+    summary = health.get("summary") or {}
+    if not trust:
+        return str(health.get("health_brief") or "")
+    return _health_brief(trust, summary)
 
 
 def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -205,6 +213,7 @@ def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None 
             summary["feeds_all_empty_codes"] += 1
 
     return {
+        "slot": "midday",
         "health_brief": _health_brief(trust, summary),
         "global": global_items,
         "trust_flags": trust,
@@ -214,4 +223,4 @@ def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None 
     }
 
 
-__all__ = ["build_health"]
+__all__ = ["build_health", "refresh_health_brief"]

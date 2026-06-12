@@ -180,6 +180,14 @@ def _health_brief(trust: dict[str, bool], summary: dict[str, Any]) -> str:
     return "；".join(parts) + "。" if parts else "数据整体可用。"
 
 
+def refresh_health_brief(health: dict[str, Any]) -> str:
+    trust = health.get("trust_flags") or {}
+    summary = health.get("summary") or {}
+    if not trust:
+        return str(health.get("health_brief") or "")
+    return _health_brief(trust, summary)
+
+
 def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None = None) -> dict[str, Any]:
     """3.2：health + trust_flags + health_brief。"""
     meta = bundle.get("meta") or {}
@@ -222,6 +230,7 @@ def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None 
             summary["feeds_all_empty_codes"] += 1
 
     return {
+        "slot": "evening",
         "health_brief": _health_brief(trust, summary),
         "global": global_items,
         "trust_flags": trust,
@@ -231,4 +240,4 @@ def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None 
     }
 
 
-__all__ = ["build_health"]
+__all__ = ["build_health", "refresh_health_brief"]

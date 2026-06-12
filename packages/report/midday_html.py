@@ -348,6 +348,8 @@ def _hero_head_html(rc: dict[str, Any]) -> str:
 
 def _alerts_html(rc: dict[str, Any]) -> str:
     parts = []
+    if rc.get("health_brief"):
+        parts.append(f'<div class="health-bar">{html.escape(str(rc["health_brief"]))}</div>')
     if rc.get("missing_codes"):
         parts.append(f'<div class="alert alert-warn">漏股 {len(rc["missing_codes"])} 只：{html.escape(", ".join(rc["missing_codes"]))}</div>')
     if rc.get("truncated_suspected"):

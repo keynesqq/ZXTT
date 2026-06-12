@@ -47,6 +47,9 @@ def build_evening_render_context(*, on_date: date) -> dict[str, Any]:
     ai = _load_json(_AI_DIR / f"evening_{on_date.isoformat()}.json") or {}
     meta = ctx.get("meta") or {}
     health = ctx.get("health") or {}
+    from evening.health import refresh_health_brief
+
+    health_brief = refresh_health_brief(health)
     quote_data = load_quote_query_cache(on_date=on_date) or {}
     quotes = quote_data.get("quotes") or []
     memberships = ctx.get("memberships") or quote_data.get("memberships") or []
@@ -88,7 +91,7 @@ def build_evening_render_context(*, on_date: date) -> dict[str, Any]:
         "row_count": meta.get("row_count", 0),
         "cls_articles_found": meta.get("cls_articles_found", ""),
         "cls_complete": (ctx.get("cls_digest") or {}).get("complete", False),
-        "health_brief": health.get("health_brief", ""),
+        "health_brief": health_brief,
         "trust_flags": health.get("trust_flags") or {},
         "ai_ok": ai_ok,
         "ai_error": ai.get("ai_error") or "",
@@ -117,6 +120,9 @@ def build_midday_render_context(*, on_date: date) -> dict[str, Any]:
     ai = _load_json(_AI_DIR / f"midday_{on_date.isoformat()}.json") or {}
     meta = ctx.get("meta") or {}
     health = ctx.get("health") or {}
+    from midday.health import refresh_health_brief
+
+    health_brief = refresh_health_brief(health)
     quote_data = load_quote_query_cache(on_date=on_date) or {}
     quotes = quote_data.get("quotes") or []
     memberships = ctx.get("memberships") or quote_data.get("memberships") or []
@@ -150,7 +156,7 @@ def build_midday_render_context(*, on_date: date) -> dict[str, Any]:
         "generated_at": now_iso(),
         "code_count": meta.get("code_count", 0),
         "row_count": meta.get("row_count", 0),
-        "health_brief": health.get("health_brief", ""),
+        "health_brief": health_brief,
         "trust_flags": health.get("trust_flags") or {},
         "ai_ok": ai_ok,
         "ai_error": ai.get("ai_error") or "",
@@ -203,6 +209,26 @@ def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
     pre = _load_json(_PRE_DIR / f"{on_date.isoformat()}.json") or ctx.get("morning_pre") or {}
     run_st = _load_json(_RUN_DIR / f"{on_date.isoformat()}.json") or {}
     meta = ctx.get("meta") or {}
+    from morning.checks import load_evening_expectations
+    from morning.health import build_health
+
+    evening_expectations = ctx.get("evening_expectations") or {}
+    if not evening_expectations:
+        try:
+            evening_expectations = load_evening_expectations(on_date)
+        except (OSError, ValueError):
+            evening_expectations = {}
+
+    health = build_health(
+        calendar_date=on_date,
+        auction_trend=ctx.get("auction_trend") or {},
+        morning_pre=ctx.get("morning_pre") or pre,
+        checks=checks,
+        open_market=ctx.get("open_market"),
+        evening_summary=str(meta.get("evening_summary") or ""),
+        prev_trade_date=str(checks.get("prev_trade_date") or ""),
+        evening_expectations=evening_expectations,
+    )
 
     ai_fields = _morning_ai_fields(ai, ctx)
     ai_ok = ai_fields["ai_ok"]
@@ -233,6 +259,8 @@ def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
         "generated_at": now_iso(),
         "code_count": meta.get("code_count", 0),
         "point_count": meta.get("point_count") or checks.get("point_count"),
+        "health_brief": health.get("health_brief", ""),
+        "trust_flags": health.get("trust_flags") or {},
         "ai_ok": ai_ok,
         "ai_error": ai.get("ai_error") or "",
         "ai_model": ai.get("model") or "",
