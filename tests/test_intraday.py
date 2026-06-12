@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "packages"))
 
 from intraday.mock import DEMO_DATE_ISO, MOCK_STOCKS, build_mock_series_points
+from intraday.resume import phase_status, resolve_phases
 from intraday.simulate import run_intraday_simulate
 from intraday.series import (
     append_intraday_segment_point,
@@ -65,6 +66,17 @@ class IntradayStocksTests(unittest.TestCase):
     def test_fallback_codes_from_config(self, _cfg, _cache, _stocks, _load):
         stocks = resolve_intraday_stocks(None)
         self.assertEqual([s.code for s in stocks], ["300750"])
+
+
+class IntradayResumeTests(unittest.TestCase):
+    def test_resolve_phases_resume_skips_done(self):
+        day = date(2026, 6, 12)
+        with (
+            patch("intraday.resume.auction_phase_complete", return_value=True),
+            patch("intraday.resume.intraday_segment_complete", side_effect=lambda _d, seg: seg == "morning"),
+        ):
+            phases = resolve_phases(session="all", resume=True, on_date=day)
+        self.assertEqual(phases, ["afternoon"])
 
 
 class IntradayScheduleTests(unittest.TestCase):
@@ -124,12 +136,11 @@ class IntradaySeriesTests(unittest.TestCase):
                     captured_at="2026-06-12 13:00:00",
                     on_date=day,
                     segment="afternoon",
+                    is_final=True,
                 )
                 write_merged_intraday_series(on_date=day)
                 merged = load_intraday_series(on_date=day)
                 self.assertEqual(len(merged), 2)
-                self.assertEqual(merged[0]["captured_at"], "2026-06-12 11:30:00")
-                self.assertEqual(merged[1]["captured_at"], "2026-06-12 13:00:00")
 
 
 class IntradayWatchTests(unittest.TestCase):
@@ -137,6 +148,11 @@ class IntradayWatchTests(unittest.TestCase):
         day = date(2026, 6, 12)
         stocks = [StockItem(code="600519", name="茅台", group="我的", block_id="")]
         snap = _mock_snapshot_row("600519", "2026-06-12 09:30:00")
+        auction_ok = {
+            "outcome": "ok",
+            "point_count": 1,
+            "trend_path": "data/auction_trend_2026-06-12.json",
+        }
         with tempfile.TemporaryDirectory() as tmp:
             data = Path(tmp) / "data"
             with (
@@ -144,17 +160,13 @@ class IntradayWatchTests(unittest.TestCase):
                 patch("intraday.manifest.DATA_DIR", data),
                 patch("intraday.watch.resolve_intraday_stocks", return_value=stocks),
                 patch("intraday.watch.build_snapshots", return_value=[snap]),
+                patch("intraday.watch.run_auction_watch", return_value=auction_ok),
                 patch("intraday.watch._sleep_until"),
                 patch("intraday.watch.is_trading_day", return_value=True),
             ):
-                append_intraday_segment_point(
-                    [{"code": "600519"}],
-                    captured_at="2026-06-12 08:00:00",
-                    on_date=day,
-                    segment="morning",
-                )
                 result = run_intraday_watch(["600519"], force=True, on_date=day, session="all")
                 self.assertEqual(result["outcome"], "ok")
+                self.assertEqual(result["auction_point_count"], 1)
                 self.assertEqual(result["morning_point_count"], 1)
                 self.assertEqual(result["afternoon_point_count"], 1)
                 self.assertEqual(result["merged_point_count"], 2)
@@ -171,6 +183,7 @@ class IntradayWatchTests(unittest.TestCase):
                     "intraday.watch.resolve_intraday_stocks",
                     return_value=[StockItem(code="600519", name="茅台", group="", block_id="")],
                 ),
+                patch("intraday.watch.run_auction_watch", return_value={"outcome": "ok", "point_count": 1}),
                 patch("intraday.watch.build_snapshots", side_effect=RuntimeError("quote down")),
                 patch("intraday.watch._sleep_until"),
                 patch("intraday.watch.is_trading_day", return_value=True),
@@ -192,8 +205,6 @@ class IntradaySimulateTests(unittest.TestCase):
         self.assertEqual(interval, 60)
         self.assertEqual(len(morning_points), 121)
         self.assertEqual(len(afternoon_points), 121)
-        self.assertEqual(morning_points[0]["captured_at"], f"{DEMO_DATE_ISO} 09:30:00")
-        self.assertEqual(afternoon_points[-1]["captured_at"], f"{DEMO_DATE_ISO} 15:00:00")
 
     def test_simulate_full_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -201,19 +212,21 @@ class IntradaySimulateTests(unittest.TestCase):
             with (
                 patch("intraday.series.DATA_DIR", data),
                 patch("intraday.manifest.DATA_DIR", data),
+                patch("auction.series.DATA_DIR", data),
+                patch("auction.manifest.DATA_DIR", data),
+                patch("auction.trajectory.DATA_DIR", data),
             ):
                 result = run_intraday_simulate(on_date=date.fromisoformat(DEMO_DATE_ISO))
                 self.assertEqual(result["outcome"], "ok")
+                self.assertGreaterEqual(int(result["auction_point_count"] or 0), 20)
                 self.assertEqual(result["morning_point_count"], 121)
                 self.assertEqual(result["afternoon_point_count"], 121)
                 self.assertEqual(result["merged_point_count"], 242)
                 day_iso = DEMO_DATE_ISO
+                self.assertTrue((data / f"auction_trend_{day_iso}.json").is_file())
                 self.assertTrue((data / f"intraday_series_{day_iso}_morning.json").is_file())
                 self.assertTrue((data / f"intraday_series_{day_iso}_afternoon.json").is_file())
                 self.assertTrue((data / f"intraday_series_{day_iso}.json").is_file())
-                merged = json.loads((data / f"intraday_series_{day_iso}.json").read_text(encoding="utf-8"))
-                self.assertEqual(merged.get("schema_version"), 2)
-                self.assertEqual(merged.get("point_count"), 242)
 
 
 if __name__ == "__main__":

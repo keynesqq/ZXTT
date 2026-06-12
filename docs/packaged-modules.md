@@ -13,7 +13,7 @@
 | 行情查询 `quote` | `python run.py quote query` | 即时查全字段行情，分层落盘（事实+板块归属） |
 | 公告查询 `announcement` | `python run.py announcement query` | 即时查公告，查完落盘 |
 | 集合竞价 `auction` | `python run.py auction` | 传入股票列表，竞价时段定时采走势 |
-| **盘中分钟序列** `intraday` | `python run.py intraday` | 全自选每分钟采行情；上午+下午分段保存后合并 |
+| **盘中分钟序列** `intraday` | `python run.py intraday` | 全天监控：竞价独立落盘 + 正式交易分段合并 |
 | 资讯查询 `news` | `python run.py news query` | 即时查资讯/观点/研报/行业，查完落盘 |
 | **大盘短线生态** `ecosystem` | `python run.py ecosystem collect` | 东财三池 + 汇总 + 池子参考分（**非**最终大盘情绪） |
 | **指数快照** `index` | `python run.py index collect` | 上证/深证/创业板等涨跌与量能，独立事实源 |
@@ -374,75 +374,78 @@ auction:
 
 ---
 
-## 5. 盘中分钟序列 `intraday`
+## 5. 盘中分钟序列 `intraday`（全天监控）
 
 ### 做什么
 
-交易日 **上午 9:30–11:30**、**下午 13:00–15:00**，对自选池个股各 **每分钟**采一次**全字段行情**（与 `quote query` 同口径：价量、均线、涨跌停、K 线形态等）。
+**一条命令覆盖交易日监控时段**（默认 **全自选、同股只采一次**）：
 
-**默认股票池：** `config.yaml` → `ths.analyze_blocks` 下**全部自选**，同股多板块时**只采一条**（与 `quote query --all` 去重规则一致）。也可 `--codes` 指定。
+| 时段 | 内容 | 落盘 | 间隔 |
+|------|------|------|------|
+| **9:15–9:25 竞价** | 轻量缺口/成交额 + 走势形态 | `auction_series_*`、`auction_trend_*`（**独立**，供早盘报告） | 30 秒 |
+| **9:30–11:30 上午** | 全字段行情 | `intraday_series_*_morning.json` | 60 秒 |
+| **13:00–15:00 下午** | 全字段行情 | `intraday_series_*_afternoon.json` | 60 秒 |
+| **下午结束后** | 合并正式交易两段 | `intraday_series_{date}.json`（**不含竞价**） | — |
 
-**分段与合并：**
+**计划任务：** 只需 **9:14 启动一次** `scripts/run_intraday_watch.bat`（内部 `intraday --resume`），进程会等到各段时刻并贯穿到 15:00。注册：`scripts/setup_scheduled_tasks.ps1` → 任务名 `ZXTT-Intraday-Watch`（最长运行 7 小时）。
 
-1. 上午采完 → 写入 `intraday_series_{date}_morning.json`
-2. 程序等到 13:00 继续下午段
-3. 下午采完 → 写入 `intraday_series_{date}_afternoon.json`，并合并为 `intraday_series_{date}.json`（全天 242 点）
+**挂掉备案：**
+
+| 场景 | 命令 |
+|------|------|
+| 自动续跑（跳过已完成段） | `python run.py intraday --resume` |
+| 只重采竞价 | `python run.py intraday --session auction` |
+| 只重采上午/下午 | `python run.py intraday --session morning` / `afternoon` |
+| 验通路（各段 1 点） | `python run.py intraday --force` |
+
+`python run.py auction` 仍可用，等价于 `--session auction`。
 
 **不做的事：**
 
-- 无分钟 K 线 OHLC 序列导出（只有快照字段 + `intraday_shape`）
-- 不含 feeds、财联社、竞价走势汇总
+- 竞价数据**不写入** `intraday_series_{date}.json` 合并文件
+- 无分钟 K 线序列导出
 
 ### 怎么做的
 
-**代码位置：** `packages/intraday/`
+**代码位置：** `packages/intraday/`（竞价段调用 `packages/auction/`）
 
 | 组件 | 职责 |
 |------|------|
-| `watch.py` | 两段调度、等到时刻、拉行情、合并 |
-| `stocks.py` | 默认全自选去重；CLI / quote 缓存 / config 回退 |
-| `series.py` | 分段 series + 合并文件 |
-| `manifest.py` | `last_intraday_watch.json` |
-| `simulate.py` / `mock.py` | 离线验通路 |
-| `packages/quote/snapshot/build.py` | 双源全字段快照（循环内 `record_manifest=False`） |
-
-**采样流程：**
-
-1. 解析股票池（默认 `load_stocks()` + `dedupe_stocks_by_code`）。
-2. 非 `--force`：按时刻表 sleep 到点，每分钟 `build_snapshots` 写入对应分段文件。
-3. `--force`：上午/下午各采 1 点并立即合并（验通路）。
-4. `--session morning|afternoon`：只跑单段；下午结束后与已有上午合并。
+| `watch.py` | 编排竞价 → 上午 → 下午 → 合并 |
+| `resume.py` | `--resume` 检测各段是否已完成 |
+| `stocks.py` | 默认全自选去重 |
+| `series.py` | 正式交易分段 + 合并 |
+| `manifest.py` | `last_intraday_watch.json`（含 `phases_done`） |
+| `auction/*` | 竞价 series + trend（早盘报告仍读 `auction_trend`） |
 
 **落盘：**
 
 | 文件 | 说明 |
 |------|------|
-| `data/intraday_series_{date}_morning.json` | 上午原始序列（121 点） |
-| `data/intraday_series_{date}_afternoon.json` | 下午原始序列（121 点） |
-| `data/intraday_series_{date}.json` | **合并主文件**（schema v2，`point_count: 242`） |
-| `data/last_intraday_watch.json` | 最近一次运行状态 |
+| `data/auction_trend_{date}.json` | **早盘报告主读** |
+| `data/auction_series_{date}.json` | 竞价原始点 |
+| `data/intraday_series_{date}_morning.json` | 上午 121 点 |
+| `data/intraday_series_{date}_afternoon.json` | 下午 121 点 |
+| `data/intraday_series_{date}.json` | 正式交易合并（242 点） |
+| `data/last_intraday_watch.json` | 全天监控状态 |
+| `data/last_auction_watch.json` | 竞价段状态（兼容旧逻辑） |
 
 ### 如何使用
 
 ```bash
-# 默认：全自选，跑全天（约 4 小时，需交易日 9:30 前启动）
+# 全天（9:14 计划任务同款，含 --resume）
+python run.py intraday --resume
+
+# 首次手动跑全天（清空当日正式交易分段后重采）
 python run.py intraday
 
-# 指定少数几只
-python run.py intraday --codes 600519,000001
-
-# 只跑上午或下午
-python run.py intraday --session morning
-python run.py intraday --session afternoon
-
-# 快速验通路（各 1 点 + 合并）
+python run.py intraday --codes 600519
+python run.py intraday --session auction
 python run.py intraday --force
-
-# 离线模拟（无网络）
 python run.py intraday --simulate --date 2026-06-10
 ```
 
-**配置**（`config.yaml` → `intraday` 段）：
+**配置：**
 
 ```yaml
 intraday:
@@ -451,17 +454,20 @@ intraday:
   morning_end: "11:30:00"
   afternoon_start: "13:00:00"
   afternoon_end: "15:00:00"
-  codes:          # 仅同花顺/quote 均不可用时回退
-  - "600519"
+
+auction:          # 竞价段仍读此段
+  interval_sec: 30
+  watch_start: "09:15:05"
+  watch_end: "09:25:05"
 ```
 
 **验收标准：**
 
 | 场景 | 预期 |
 |------|------|
-| `--simulate` | `outcome: ok`，`merged_point_count: 242`，三份 JSON 均存在 |
-| `--force` + 全自选 | 约数秒，`stock_count` = 去重自选只数，`merged_point_count: 2` |
-| 交易日 `--session all` | 上午文件在 11:30 后完整；合并文件在 15:00 后 `point_count: 242` |
+| `--simulate` | 生成 `auction_trend` + 三份 intraday 文件，合并 `point_count: 242` |
+| `--force` | `phases_done` 含 auction/morning/afternoon，`merged_point_count: 2` |
+| `--resume` 且竞价已完成 | 跳过 auction，从下一未完成段继续 |
 
 ---
 

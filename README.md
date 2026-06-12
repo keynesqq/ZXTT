@@ -28,7 +28,7 @@ copy config.example.yaml config.yaml
 
 `market collect` 为 `ecosystem collect` 的兼容别名。`market collect --articles` 已废弃，请改用 `cls collect --articles`。
 
-**盘中分钟序列**（默认全自选、同股只采一次）：上午 9:30–11:30 与下午 13:00–15:00 各每分钟采全字段行情，分段落盘后合并。验通路：`python run.py intraday --simulate`；立即 1 点：`python run.py intraday --force`。详文见 [`docs/packaged-modules.md`](docs/packaged-modules.md) §5。
+**全天监控 `intraday`**（默认全自选、同股只采一次）：9:15 竞价（独立文件供早盘报告）→ 9:30–11:30 / 13:00–15:00 正式交易分段合并。计划任务见 `scripts/run_intraday_watch.bat`。验通路：`python run.py intraday --simulate`；挂掉续跑：`python run.py intraday --resume`。详文见 [`docs/packaged-modules.md`](docs/packaged-modules.md) §5。
 
 ## 盘后采集（手动顺序）
 

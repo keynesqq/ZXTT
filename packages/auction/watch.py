@@ -65,6 +65,7 @@ def run_auction_watch(
     *,
     force: bool = False,
     on_date: date | None = None,
+    reset: bool = True,
 ) -> dict:
     """采集集合竞价走势；codes 为必填个股列表（一只或多只）。"""
     stocks = resolve_auction_stocks(codes)
@@ -79,7 +80,8 @@ def run_auction_watch(
     schedule, interval = _schedule_times(day)
     if force:
         schedule = [datetime.now(_CN_TZ)]
-    reset_auction_series(on_date=day)
+    if reset:
+        reset_auction_series(on_date=day)
 
     t0 = time.monotonic()
     collected = 0

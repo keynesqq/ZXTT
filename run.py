@@ -43,6 +43,7 @@ def cmd_intraday(args: argparse.Namespace) -> int:
             force=args.force,
             on_date=_parse_date(args.date),
             session=args.session,
+            resume=args.resume,
         )
         ok = result.get("outcome") in ("ok", "skip")
     print(result)
@@ -600,12 +601,13 @@ def main() -> None:
     auction.add_argument("--date", default=None)
     auction.add_argument("--simulate", action="store_true")
 
-    intraday = sub.add_parser("intraday", help="盘中分钟序列（上午+下午，分段保存后合并）")
+    intraday = sub.add_parser("intraday", help="全天监控：竞价+正式交易（分段保存，竞价独立文件）")
     intraday.add_argument("--codes", default="")
     intraday.add_argument("--force", action="store_true")
     intraday.add_argument("--date", default=None)
     intraday.add_argument("--simulate", action="store_true")
-    intraday.add_argument("--session", default="all", choices=("all", "morning", "afternoon"))
+    intraday.add_argument("--resume", action="store_true", help="跳过已完成分段，续跑未完成段")
+    intraday.add_argument("--session", default="all", choices=("all", "auction", "morning", "afternoon"))
 
     args = parser.parse_args()
     if args.cmd == "cls" and args.cls_cmd == "collect":

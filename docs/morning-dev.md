@@ -14,7 +14,7 @@
 | 项 | 定稿 |
 |----|------|
 | 模块关系 | `evening` / `midday` / `morning` **完全独立**（命令、配置、数据、页面、微信） |
-| 与 `auction` | `auction` **只采集**；`morning` **只读** `auction_trend`，不 import `auction` 采集逻辑 |
+| 与 `auction` / `intraday` | 竞价由 **`intraday` 全天监控**在 9:15 段写入 `auction_trend`（独立文件）；`morning` **只读** `auction_trend` |
 | 两档时刻 | **9:15** 采集（无 HTML）；**≈9:25:10** 出报告 |
 | AI | **单次合成**（非 sharded）；`timeout` **110s** |
 | SLA | 竞价就绪后 **120s 内** 微信送达；**无模板降级**（AI 失败则报告档 `outcome=error`，见 §三） |
@@ -39,12 +39,12 @@
 
 | 时刻 | 进程 | 命令 | 产出 |
 |------|------|------|------|
-| **9:15:05** | A（并行） | `python run.py auction` | `auction_trend`（末点约 **9:25:10**） |
+| **9:14** | A | `scripts/run_intraday_watch.bat`（`intraday --resume`） | 9:15 起竞价 → 全天正式交易；竞价产出 `auction_trend` |
 | **9:15:05** | B（并行） | `python run.py morning --phase pre` | `morning_pre/{date}.json` |
 | **9:25:12** | C | `python run.py morning` | 报告 + 微信 |
 
 ```
-09:15:05  scripts/run_auction_watch.bat
+09:14     scripts/run_intraday_watch.bat
 09:15:05  scripts/run_morning_pre.bat
 09:25:12  scripts/run_morning_report.bat
 ```

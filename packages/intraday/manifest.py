@@ -17,6 +17,7 @@ def save_watch_manifest(
     *,
     outcome: str,
     on_date: date | None = None,
+    auction_point_count: int = 0,
     morning_point_count: int = 0,
     afternoon_point_count: int = 0,
     merged_point_count: int = 0,
@@ -25,6 +26,8 @@ def save_watch_manifest(
     duration_ms: int = 0,
     message: str = "",
     session: str = "all",
+    phases_done: list[str] | None = None,
+    last_phase: str = "",
 ) -> Path:
     day = on_date or today_cn()
     merged = merged_point_count or point_count or (morning_point_count + afternoon_point_count)
@@ -33,11 +36,14 @@ def save_watch_manifest(
         "calendar_date": day.isoformat(),
         "session": session,
         "outcome": outcome,
+        "auction_point_count": auction_point_count,
         "morning_point_count": morning_point_count,
         "afternoon_point_count": afternoon_point_count,
         "merged_point_count": merged,
         "point_count": merged,
         "stock_count": stock_count,
+        "phases_done": phases_done or [],
+        "last_phase": last_phase,
         "duration_ms": duration_ms,
         "finished_at": time.time(),
         "message": message,
