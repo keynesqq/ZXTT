@@ -9,6 +9,7 @@ from typing import Any
 from core.config import normalize_code
 from core.context_as_of import max_ts_iso
 from core.paths import DATA_DIR
+from intraday.digest import digest_payload_ok, digest_stock_map, load_intraday_digest
 from quote.query_cache import load_quote_query_cache, quote_query_cache_path
 
 _SLOT = "midday"
@@ -131,6 +132,7 @@ def _paths_meta(day: date) -> dict[str, str]:
         "market_flow": f"data/market_flow/{iso}.json",
         "cls_finance": f"data/cls_finance/{iso}.json",
         "collect_manifest": f"data/collect_manifest/{iso}_midday.json",
+        "intraday_digest_morning": f"data/intraday_digest_{iso}_morning.json",
     }
 
 
@@ -175,6 +177,9 @@ def build_midday_bundle(*, on_date: date | None = None) -> dict[str, Any]:
     quote = load_quote_query_cache(on_date=day)
     if not quote:
         raise FileNotFoundError(f"quote_query missing: {quote_query_cache_path(day)}")
+
+    digest_payload = load_intraday_digest(on_date=day, segment="morning")
+    digest_by = digest_stock_map(digest_payload)
 
     ann = _load_json(DATA_DIR / f"announcement_query_{iso}.json")
     news = _load_json(DATA_DIR / f"news_query_{iso}.json")
@@ -238,6 +243,7 @@ def build_midday_bundle(*, on_date: date | None = None) -> dict[str, Any]:
                 "news_queried_at": str((news_row or {}).get("queried_at") or ""),
             },
             "flow_stock": flow_by.get(code) or {"main_net_yi": None, "pct_chg": quote_clean.get("pct_chg")},
+            "intraday_morning": digest_by.get(code) or {},
         }
 
     market: dict[str, Any] = {
@@ -282,6 +288,8 @@ def build_midday_bundle(*, on_date: date | None = None) -> dict[str, Any]:
         "row_count": int(quote.get("row_count") or len(memberships)),
         "orphan_codes": orphan_codes,
         "missing_feeds_sources": missing_feeds_sources,
+        "intraday_digest_ok": digest_payload_ok(digest_payload, segment="morning"),
+        "intraday_point_count": int((digest_payload or {}).get("point_count") or 0),
         "paths": paths,
     }
 

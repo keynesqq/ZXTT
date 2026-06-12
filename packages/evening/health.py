@@ -76,6 +76,7 @@ def _trust_flags_from_bundle(bundle: dict[str, Any], manifest: dict | None) -> d
     )
     by_code = bundle.get("by_code") or {}
     wl_count = sum(1 for row in by_code.values() if (row.get("flow_stock") or {}).get("main_net_yi") is not None)
+    meta = bundle.get("meta") or {}
 
     return {
         "ecosystem": _source_ok(manifest, "market_sentiment"),
@@ -86,10 +87,12 @@ def _trust_flags_from_bundle(bundle: dict[str, Any], manifest: dict | None) -> d
         "sector_flow": bool(sectors),
         "northbound_suspicious": northbound_suspicious,
         "watchlist_flow": wl_count >= len(by_code) * 0.8 if by_code else False,
+        "intraday_digest_ok": bool(meta.get("intraday_digest_ok")),
     }
 
 
 def _global_health(bundle: dict[str, Any], trust: dict[str, bool], manifest: dict | None) -> list[dict[str, Any]]:
+    del bundle
     global_items: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -110,6 +113,8 @@ def _global_health(bundle: dict[str, Any], trust: dict[str, bool], manifest: dic
         _add("CLS_ARTICLES_INCOMPLETE", "warn", f"财联社长文 {found}/{expected}")
     if trust.get("northbound_suspicious"):
         _add("NORTHBOUND_SUSPICIOUS", "warn", "北向成交净买额为零且数据存疑")
+    if not trust.get("intraday_digest_ok"):
+        _add("INTRADAY_DIGEST_MISSING", "warn", "全天分钟监控摘要缺失或不完整")
     return global_items
 
 
@@ -118,6 +123,8 @@ def _code_health_row(
     row: dict[str, Any],
     *,
     primary_stance: str,
+    intraday_digest_ok: bool = False,
+    intraday_field: str = "intraday_full",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     full: list[dict[str, Any]] = []
     feeds = row.get("feeds_merged") or {}
@@ -139,6 +146,10 @@ def _code_health_row(
         x.get("code_key") == FEED_COLLECT_FAILED for x in full
     ):
         full.append({"code_key": "FEEDS_ALL_EMPTY", "level": "warn", "message": "五类素材皆空"})
+    if intraday_digest_ok and not (row.get(intraday_field) or {}).get("session_shape"):
+        full.append(
+            {"code_key": "INTRADAY_STOCK_MISSING", "level": "warn", "message": "该股未纳入分钟监控"}
+        )
 
     display = [
         x
@@ -159,6 +170,8 @@ def _health_brief(trust: dict[str, bool], summary: dict[str, Any]) -> str:
         parts.append("北向存疑")
     if not trust.get("cls_articles_complete"):
         parts.append("财联社长文不齐")
+    if not trust.get("intraday_digest_ok"):
+        parts.append("全天分钟监控摘要缺失")
     if trust.get("watchlist_flow"):
         parts.append("自选主力可用")
     ann_empty = int(summary.get("ann_empty_codes") or 0)
@@ -174,6 +187,7 @@ def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None 
     manifest = _load_manifest(day)
     trust = _trust_flags_from_bundle(bundle, manifest)
     global_items = _global_health(bundle, trust, manifest)
+    intraday_digest_ok = bool(trust.get("intraday_digest_ok"))
 
     by_code: dict[str, list[dict[str, Any]]] = {}
     display_by_code: dict[str, list[dict[str, Any]]] = {}
@@ -187,7 +201,13 @@ def build_health(bundle: dict[str, Any], *, tags_by_code: dict[str, Any] | None 
 
     for code, row in (bundle.get("by_code") or {}).items():
         stance = (tags_by_code or {}).get(code, {}).get("primary_stance", "theme_other")
-        full, display = _code_health_row(code, row, primary_stance=stance)
+        full, display = _code_health_row(
+            code,
+            row,
+            primary_stance=stance,
+            intraday_digest_ok=intraday_digest_ok,
+            intraday_field="intraday_full",
+        )
         by_code[code] = full
         display_by_code[code] = display
         if any(x.get("level") == "block" for x in full):

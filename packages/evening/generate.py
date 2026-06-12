@@ -9,6 +9,7 @@ from typing import Any
 
 from core.config import evening_cfg
 from core.context_as_of import now_iso
+from core.health_gate import first_global_health_block
 from core.io import atomic_write_text
 from core.paths import DATA_DIR
 from core.trading_calendar import next_trading_day
@@ -76,6 +77,15 @@ def run_evening_ai(
     t0 = time.monotonic()
     cal = on_date or date.today()
     ctx = _load_context(cal)
+    blocked = first_global_health_block(ctx.get("health") or {})
+    if blocked:
+        return {
+            "outcome": "fail",
+            "reason": "health_block",
+            "code_key": blocked.get("code_key"),
+            "message": blocked.get("message"),
+            "calendar_date": cal.isoformat(),
+        }
     try:
         build_evening_user_prompt(ctx)
     except ValueError as e:

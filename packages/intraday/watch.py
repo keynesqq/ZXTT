@@ -14,6 +14,7 @@ from core.paths import DATA_DIR
 from core.schedule_guard import require_collect_schedule, sleep_until
 from core.trading_calendar import is_trading_day, today_cn
 from core.trading_schedule import build_interval_schedule, parse_hms
+from intraday.digest import write_intraday_digest
 from intraday.manifest import save_watch_manifest
 from intraday.resume import auction_phase_complete, intraday_segment_complete, phase_status, resolve_phases
 from intraday.series import (
@@ -307,6 +308,7 @@ def run_intraday_watch(
                 morning_count=morning_count,
                 message="morning done",
             )
+            write_intraday_digest(on_date=day, segment="morning")
 
         if "afternoon" in phases:
             afternoon_count = _collect_segment(
@@ -334,6 +336,7 @@ def run_intraday_watch(
         merged_path = None
         if "afternoon" in phases:
             merged_path = write_merged_intraday_series(on_date=day)
+            write_intraday_digest(on_date=day, segment="full")
     except Exception as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
         save_watch_manifest(

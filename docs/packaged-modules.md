@@ -421,6 +421,7 @@ auction:
 | `stocks.py` | 默认全自选去重 |
 | `series.py` | 正式交易分段 + 合并 |
 | `manifest.py` | `last_intraday_watch.json`（含 `phases_done`） |
+| `digest.py` | 午/晚报告用摘要（形态标签 + 较竞价 gap） |
 | `core/schedule_guard.py` | 段首等待、续跑按已采时刻裁剪 |
 | `core/phase_complete.py` | 各段完成判定 |
 | `auction/*` | 竞价 series + trend（早盘报告仍读 `auction_trend`） |
@@ -434,8 +435,16 @@ auction:
 | `data/intraday_series_{date}_morning.json` | 上午 121 点 |
 | `data/intraday_series_{date}_afternoon.json` | 下午 121 点 |
 | `data/intraday_series_{date}.json` | 正式交易合并（242 点） |
+| `data/intraday_digest_{date}_morning.json` | **午间报告**读：上午形态 + `vs_auction_end_gap` |
+| `data/intraday_digest_{date}_full.json` | **晚间报告**读：全天/分段形态 + `vs_auction_end_gap_close` |
 | `data/last_intraday_watch.json` | 全天监控状态（`outcome: running` 表示段间心跳） |
 | `data/last_auction_watch.json` | 竞价段状态（兼容旧逻辑） |
+
+**午/晚报告与 digest（软降级）：**
+
+- 摘要需满 **121/242 点** 才落盘；不齐时 health 标 **warn**（`INTRADAY_DIGEST_MISSING`），**报告仍出**。
+- prompt 全局行：`intraday_monitor=121点` 或 `intraday_monitor=不可用`。
+- 无 digest：每股「上午/全天监控未采集」；digest 齐但缺某股：「该股未纳入监控」；constraints 禁止写日内形态。
 
 ### 如何使用
 
@@ -1026,6 +1035,8 @@ quote query（① 内嵌于 ②）
     → AI 合成（默认 sharded）
     → render HTML + 微信 + 午后预期
 ```
+
+**分钟监控（软降级）：** 读 `intraday_digest_*_morning.json`；缺失时 health **warn**、报告照常，prompt 标「上午监控未采集」，不写日内形态结论。
 
 **库入口：**
 

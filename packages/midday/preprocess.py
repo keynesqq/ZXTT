@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 
 from core.config import normalize_code
+from core.health_gate import first_global_health_block
 from core.io import atomic_write_text
 from core.paths import DATA_DIR
 from core.trading_calendar import is_trading_day
@@ -65,11 +66,21 @@ def run_preprocess_midday(
     trade_date = date.fromisoformat(str((bundle.get("meta") or {}).get("trade_date") or cal.isoformat()))
     tags_by_code = build_tags_by_code(bundle)
     health = build_health(bundle, tags_by_code=tags_by_code)
+    blocked = first_global_health_block(health)
+    if blocked:
+        return {
+            "outcome": "fail",
+            "reason": "health_block",
+            "code_key": blocked.get("code_key"),
+            "message": blocked.get("message"),
+            "calendar_date": cal.isoformat(),
+        }
     feeds_diff = _feeds_diff_map(bundle, trade_date)
     events_by_code = build_events_by_code(bundle, feeds_diff_by_code=feeds_diff)
     market_local = build_market_local(bundle, health)
     digest_result = run_feeds_digest(bundle, tags_by_code, trade_date=trade_date)
     feeds_digest_by_code = digest_result.get("feeds_digest_by_code") or {}
+    intraday_digest_ok = bool((bundle.get("meta") or {}).get("intraday_digest_ok"))
 
     local_blocks: dict[str, Any] = {}
     for code, row in (bundle.get("by_code") or {}).items():
@@ -82,6 +93,7 @@ def run_preprocess_midday(
             feeds_digest=feeds_digest_by_code.get(code),
             market_local=market_local,
             health_display=(health.get("display_by_code") or {}).get(code, []),
+            intraday_digest_ok=intraday_digest_ok,
         )
 
     skeleton = build_midday_context_skeleton(

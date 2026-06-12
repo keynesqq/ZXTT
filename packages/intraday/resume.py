@@ -3,16 +3,16 @@ from __future__ import annotations
 
 from datetime import date
 
-from core.phase_complete import auction_phase_complete, segment_points_complete
+from core.phase_complete import auction_phase_complete
+from intraday.digest import digest_segment_complete
 from intraday.series import load_intraday_segment
 
 PHASES = ("auction", "morning", "afternoon")
-MIN_INTRADAY_POINTS = 2
 
 
 def intraday_segment_complete(on_date: date, segment: str) -> bool:
     points = load_intraday_segment(on_date=on_date, segment=segment)
-    return segment_points_complete(points, min_points=MIN_INTRADAY_POINTS)
+    return digest_segment_complete(points, segment=segment)
 
 
 def phase_complete(phase: str, on_date: date) -> bool:

@@ -5,6 +5,7 @@ import time
 from datetime import date
 
 from auction.simulate import run_auction_simulate
+from intraday.digest import write_intraday_digest
 from intraday.manifest import save_watch_manifest
 from intraday.mock import DEMO_DATE_ISO, build_mock_series_points, mock_stocks
 from intraday.series import write_intraday_segment, write_merged_intraday_series
@@ -28,6 +29,8 @@ def run_intraday_simulate(*, on_date: date | None = None) -> dict:
     write_intraday_segment(morning_points, on_date=day, segment="morning", source="simulate")
     write_intraday_segment(afternoon_points, on_date=day, segment="afternoon", source="simulate")
     merged_path = write_merged_intraday_series(on_date=day)
+    write_intraday_digest(on_date=day, segment="morning")
+    write_intraday_digest(on_date=day, segment="full")
 
     duration_ms = int((time.monotonic() - t0) * 1000)
     save_watch_manifest(

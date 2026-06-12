@@ -5,6 +5,7 @@ from typing import Any
 
 from market.cls.finance import format_cls_prompt
 from market.sentiment import format_sentiment_prompt
+from intraday.digest import intraday_monitor_global_line
 
 _STANCE_ORDER = ("holding", "candidate", "watch_right", "theme_other")
 
@@ -63,6 +64,7 @@ def build_evening_context_skeleton(
     cls_fin = (bundle.get("market") or {}).get("cls_finance") or {}
     global_parts = [
         f"trade_date={meta.get('trade_date')}",
+        intraday_monitor_global_line(meta),
         f"health_brief: {health.get('health_brief', '')}",
         "constraints:",
         *[(f"- {c}") for c in (market_local.get("constraints") or [])],

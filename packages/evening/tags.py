@@ -133,7 +133,7 @@ def build_tags_by_code(bundle: dict[str, Any]) -> dict[str, Any]:
             elif ar > cfg.get("amount_ratio_expand", 1.3):
                 tags.append("放量")
 
-        shape = str(quote.get("intraday_shape") or "").strip()
+        shape = str((row.get("intraday_full") or {}).get("session_shape") or "").strip()
         if shape:
             tags.append(f"形态:{shape}")
 

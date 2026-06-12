@@ -17,6 +17,9 @@ from morning.feeds_fingerprint import decide_feeds_status
 from morning.feeds_merge import merge_feeds
 from morning.pre_format import format_stock_prompt_line
 from morning.prompt_build import build_morning_user_prompt
+from morning.wait_auction import wait_auction_ready
+from auction.series import append_auction_series_point
+from quote.auction_snap import AuctionSnap
 from ai.parse import split_ai_report, codes_in_body, resolve_ai_report_fields
 from report.morning_html import build_morning_page
 
@@ -187,6 +190,33 @@ class MorningHtmlTest(unittest.TestCase):
         self.assertNotIn("9:15 素材", html_text)
         self.assertNotIn("观点:深科技：测试", html_text)
         self.assertNotIn("核对表", html_text)
+
+
+class WaitAuctionRebuildTest(unittest.TestCase):
+    def test_rebuild_trend_from_series_without_manifest_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            day = date(2026, 6, 12)
+            with (
+                patch("morning.wait_auction.DATA_DIR", data),
+                patch("auction.series.DATA_DIR", data),
+                patch("auction.trajectory.DATA_DIR", data),
+            ):
+                snap = AuctionSnap(code="600519", name="茅台", group="", pct_chg=0.5)
+                append_auction_series_point(
+                    [snap],
+                    captured_at="2026-06-12 09:15:00",
+                    on_date=day,
+                )
+                append_auction_series_point(
+                    [snap],
+                    captured_at="2026-06-12 09:25:00",
+                    on_date=day,
+                    is_final=True,
+                )
+                ok, _manifest = wait_auction_ready(day, max_sec=0.1)
+                self.assertTrue(ok)
+                self.assertTrue((data / f"auction_trend_{day.isoformat()}.json").is_file())
 
 
 class MorningParseTest(unittest.TestCase):

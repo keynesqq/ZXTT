@@ -482,6 +482,7 @@ class IntradaySimulateTests(unittest.TestCase):
                 patch("auction.series.DATA_DIR", data),
                 patch("auction.manifest.DATA_DIR", data),
                 patch("auction.trajectory.DATA_DIR", data),
+                patch("intraday.digest.DATA_DIR", data),
             ):
                 result = run_intraday_simulate(on_date=date.fromisoformat(DEMO_DATE_ISO))
                 self.assertEqual(result["outcome"], "ok")
@@ -494,6 +495,74 @@ class IntradaySimulateTests(unittest.TestCase):
                 self.assertTrue((data / f"intraday_series_{day_iso}_morning.json").is_file())
                 self.assertTrue((data / f"intraday_series_{day_iso}_afternoon.json").is_file())
                 self.assertTrue((data / f"intraday_series_{day_iso}.json").is_file())
+                self.assertTrue((data / f"intraday_digest_{day_iso}_morning.json").is_file())
+                self.assertTrue((data / f"intraday_digest_{day_iso}_full.json").is_file())
+
+
+class IntradayDigestTests(unittest.TestCase):
+    def test_build_morning_digest_shape_and_gap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            day = date(2026, 6, 12)
+            with (
+                patch("intraday.digest.DATA_DIR", data),
+                patch("intraday.series.DATA_DIR", data),
+            ):
+                data.mkdir(parents=True, exist_ok=True)
+                atomic = data / f"auction_trend_{day.isoformat()}.json"
+                atomic.write_text(
+                    json.dumps({"stocks": [{"code": "600519", "end_gap": 0.5}]}),
+                    encoding="utf-8",
+                )
+                from intraday.digest import build_intraday_digest, format_digest_prompt_line
+
+                for ts, pct in (("2026-06-12 09:30:00", 0.6), ("2026-06-12 11:30:00", 1.0)):
+                    append_intraday_segment_point(
+                        [{"code": "600519", "name": "茅台", "pct_chg": pct}],
+                        captured_at=ts,
+                        on_date=day,
+                        segment="morning",
+                        is_final=ts.endswith("11:30:00"),
+                    )
+                digest = build_intraday_digest(on_date=day, segment="morning")
+                stock = digest["stocks_by_code"]["600519"]
+                self.assertFalse(digest.get("is_complete"))
+                self.assertEqual(stock["vs_auction_end_gap"], 0.5)
+                self.assertIn(stock["session_shape"], ("震荡", "一路抬升", "一路下行"))
+                line = format_digest_prompt_line(stock, slot="morning")
+                self.assertIn("上午形态=", line)
+                self.assertIn("较竞价", line)
+
+    def test_write_skips_incomplete_digest_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            day = date(2026, 6, 12)
+            with (
+                patch("intraday.digest.DATA_DIR", data),
+                patch("intraday.series.DATA_DIR", data),
+            ):
+                from intraday.digest import write_intraday_digest
+
+                append_intraday_segment_point(
+                    [{"code": "600519", "name": "茅台", "pct_chg": 1.0}],
+                    captured_at="2026-06-12 09:30:00",
+                    on_date=day,
+                    segment="morning",
+                    is_final=True,
+                )
+                path = write_intraday_digest(on_date=day, segment="morning")
+                self.assertIsNone(path)
+                self.assertFalse((data / f"intraday_digest_{day.isoformat()}_morning.json").is_file())
+
+    def test_digest_payload_ok_rejects_tampered_complete(self):
+        from intraday.digest import digest_payload_ok
+
+        payload = {
+            "segment": "morning",
+            "is_complete": True,
+            "point_count": 2,
+        }
+        self.assertFalse(digest_payload_ok(payload, segment="morning"))
 
 
 if __name__ == "__main__":

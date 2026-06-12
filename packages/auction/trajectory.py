@@ -93,6 +93,11 @@ def _classify_shape(gaps: list[float]) -> str:
     return "震荡"
 
 
+def classify_value_path(values: list[float]) -> str:
+    """对涨跌幅/缺口序列做形态分类（规则同竞价 gap_path）。"""
+    return _classify_shape(values)
+
+
 def _amount_deltas(amounts: list[float]) -> list[float]:
     if len(amounts) < 2:
         return []

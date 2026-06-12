@@ -157,6 +157,8 @@ def build_market_local(bundle: dict[str, Any], health: dict[str, Any]) -> dict[s
         constraints.append("财联社长文不齐，引用须注明缺篇。")
     if trust.get("northbound_suspicious"):
         constraints.append("北向为零且存疑，勿作强多空依据。")
+    if not trust.get("intraday_digest_ok"):
+        constraints.append("全天分钟监控缺失或不完整，禁止写日内形态/轨迹结论。")
 
     l1_parts = [
         f"池子参考{sentiment.get('pool_signal', '—')}（{sentiment.get('limit_up_count', '—')}涨停）",
