@@ -285,6 +285,27 @@ def extract_push_section_body(text: str, label: str) -> str:
     return ""
 
 
+def _apply_label_aliases(
+    sections: list[tuple[str, str]],
+    aliases: dict[str, str] | None,
+) -> list[tuple[str, str]]:
+    if not aliases:
+        return sections
+    merged: dict[str, str] = {}
+    order: list[str] = []
+    for label, body in sections:
+        mapped = aliases.get(label, label)
+        text = (body or "").strip()
+        if mapped in merged:
+            if text:
+                prev = merged[mapped].strip()
+                merged[mapped] = f"{prev}\n{text}".strip() if prev else text
+        else:
+            order.append(mapped)
+            merged[mapped] = text
+    return [(label, merged[label]) for label in order]
+
+
 def _prepare_push_sections(sections: list[tuple[str, str]]) -> list[tuple[str, str]]:
     order_idx = {name: i for i, name in enumerate(_PUSH_SECTION_ORDER)}
     default = len(_PUSH_SECTION_ORDER)
@@ -363,7 +384,7 @@ def _format_push_body(label: str, body: str) -> tuple[str, str]:
     return f'<div class="push-section-body">{_inline_emphasis(body)}</div>', time_text
 
 
-def push_summary_to_html(text: str) -> str:
+def push_summary_to_html(text: str, *, label_aliases: dict[str, str] | None = None) -> str:
     """微信推送摘要：按【环境】【我的】等分段渲染。"""
     raw = (text or "").strip()
     if not raw:
@@ -372,6 +393,7 @@ def push_summary_to_html(text: str) -> str:
         return f'<div class="push-summary-fallback">{markdown_to_html(raw)}</div>'
 
     lead, analysis_time, sections = _parse_push_sections(raw)
+    sections = _apply_label_aliases(sections, label_aliases)
     sections = _prepare_push_sections(sections)
     sections_html: list[str] = []
     if lead:

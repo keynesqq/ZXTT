@@ -504,7 +504,7 @@ def _summary_trigger_html(rc: dict[str, Any]) -> str:
 def _summary_modal_html(rc: dict[str, Any]) -> str:
     if not rc.get("ai_ok"):
         return ""
-    body = push_summary_to_html(rc.get("ai_summary_raw") or "")
+    body = push_summary_to_html(rc.get("ai_summary_raw") or "", label_aliases={"仓位": "操作"})
     return (
         '<div id="summary-modal" class="modal" role="dialog" aria-modal="true" '
         'aria-labelledby="summary-modal-title" hidden>'

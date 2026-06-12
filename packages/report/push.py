@@ -46,7 +46,13 @@ def _push_once(*, token: str, title: str, content: str) -> str:
     return str(data.get("msg") or data)
 
 
-def _push_pushplus(summary: str, *, trade_date: str, title_prefix: str) -> dict[str, Any]:
+def _push_pushplus(
+    summary: str,
+    *,
+    trade_date: str,
+    title_prefix: str,
+    slot: str = "evening",
+) -> dict[str, Any]:
     token = os.getenv("WECHAT_PUSH_TOKEN", "").strip()
     if not token:
         return {"outcome": "skip", "reason": "token_missing"}
@@ -54,7 +60,7 @@ def _push_pushplus(summary: str, *, trade_date: str, title_prefix: str) -> dict[
     if not body:
         return {"outcome": "skip", "reason": "summary_empty"}
     title = f"{title_prefix} · {trade_date}"
-    content = format_wechat_push_html(body)
+    content = format_wechat_push_html(body, slot=slot)
     try:
         err = _push_once(token=token, title=title, content=content)
         if not err:
@@ -97,7 +103,7 @@ def push_wechat_summary(summary: str, *, trade_date: str, slot: str = "evening")
         title_prefix = str(cfg.get("title_prefix") or "ZXTT 盘后")
     token = os.getenv("WECHAT_PUSH_TOKEN", "").strip()
     if token:
-        return _push_pushplus(summary, trade_date=trade_date, title_prefix=title_prefix)
+        return _push_pushplus(summary, trade_date=trade_date, title_prefix=title_prefix, slot=slot)
     url = (cfg.get("webhook_url") or os.getenv("WECHAT_WEBHOOK_URL") or "").strip()
     if not url:
         return {"outcome": "skip", "reason": "webhook_missing"}

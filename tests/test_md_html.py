@@ -91,6 +91,13 @@ class MdHtmlTest(unittest.TestCase):
         self.assertIn("2026-06-12 09:25:06", out)
         self.assertNotIn("push-lead", out)
 
+    def test_push_summary_midday_position_alias(self) -> None:
+        raw = "【环境】普涨。\n【仓位】维持不追高。\n【我的】600010 观望。"
+        out = push_summary_to_html(raw, label_aliases={"仓位": "操作"})
+        self.assertIn(">操作</span>", out)
+        self.assertNotIn(">仓位</span>", out)
+        self.assertIn("维持不追高", out)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -158,7 +158,10 @@ def build_midday_render_context(*, on_date: date) -> dict[str, Any]:
         "missing_codes": ai.get("missing_codes") or [],
         "truncated_suspected": ai.get("truncated_suspected", False),
         "critical_missing": ai.get("critical_missing", False),
-        "ai_summary_html": push_summary_to_html(ai.get("summary") or ""),
+        "ai_summary_html": push_summary_to_html(
+            ai.get("summary") or "",
+            label_aliases={"仓位": "操作"},
+        ),
         "ai_body_html": markdown_to_html(ai.get("body") or ""),
         "ai_body_raw": ai.get("body") or "",
         "ai_summary_raw": ai.get("summary") or "",

@@ -188,7 +188,15 @@ def _render_tier_blocks_wechat(chunks: list[str], sec: dict[str, object]) -> Non
         chunks.append("</div>")
 
 
-def format_wechat_push_html(summary: str) -> str:
+def _midday_action_text(sec: dict[str, object]) -> str:
+    action = str(sec.get("action") or "").strip()
+    position = str(sec.get("position") or "").strip()
+    if position and action:
+        return f"{position}\n{action}".strip()
+    return position or action
+
+
+def format_wechat_push_html(summary: str, *, slot: str = "evening") -> str:
     sec = _parse_sections(summary)
     chunks: list[str] = [
         '<div style="font-size:17px;line-height:1.75;color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;">'
@@ -204,7 +212,7 @@ def format_wechat_push_html(summary: str) -> str:
         )
 
     position = str(sec.get("position") or "")
-    if position:
+    if position and slot != "midday":
         chunks.append(
             '<div style="margin-bottom:14px;padding:12px 14px;background:#eef6ff;border-radius:8px;border:1px solid #c8dff7;">'
             '<div style="font-size:13px;font-weight:700;color:#2980b9;letter-spacing:2px;margin-bottom:6px;">仓 位</div>'
@@ -214,7 +222,7 @@ def format_wechat_push_html(summary: str) -> str:
 
     _render_tier_blocks_wechat(chunks, sec)
 
-    action = str(sec["action"])
+    action = _midday_action_text(sec) if slot == "midday" else str(sec["action"])
     if action:
         chunks.append(
             '<div style="margin-top:14px;padding:12px 14px;background:#fff8e6;border-radius:8px;border:1px solid #f0d78c;">'

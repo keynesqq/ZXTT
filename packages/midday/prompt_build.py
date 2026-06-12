@@ -69,7 +69,7 @@ def build_midday_global_prompt(ctx: dict[str, Any]) -> str:
         format_analysis_time_block(str(meta.get("context_as_of") or "")),
         _MIDDAY_NOTE,
         (
-            "本任务仅输出【环境】【仓位】【操作】及分析时刻。"
+            "本任务仅输出【环境】【操作】及分析时刻。"
             f"全池 {len(stocks)} 只；自选板块：{group_counts or '—'}。"
             "个股推送行由各板块分片输出。"
         ),
