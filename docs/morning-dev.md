@@ -77,7 +77,7 @@ morning:
   sla_sec: 120
   llm_timeout_sec: 110
   wait_auction_max_sec: 15
-  llm_max_tokens: 4000
+  llm_max_tokens: 8000
   on_ai_fail: error   # error | partial_html
 ```
 

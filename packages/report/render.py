@@ -8,6 +8,7 @@ from typing import Any
 
 from core.context_as_of import now_iso
 from core.paths import DATA_DIR, ROOT
+from core.trading_calendar import previous_trading_day
 from quote.query_cache import join_quotes_with_memberships, load_quote_query_cache
 from report.md_html import markdown_to_html, push_summary_to_html
 from ai.parse import resolve_ai_report_fields
@@ -204,12 +205,31 @@ def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
     ai_ok = ai_fields["ai_ok"]
     body = ai_fields["body"]
     summary = ai_fields["summary"]
+
+    quote_data = load_quote_query_cache(on_date=on_date) or {}
+    if not quote_data.get("quotes"):
+        prev = previous_trading_day(on_date)
+        if prev:
+            quote_data = load_quote_query_cache(on_date=prev) or quote_data
+    structure = quote_data.get("structure") or {}
+    group_order = [
+        str(g.get("name")).strip()
+        for g in (structure.get("groups") or [])
+        if isinstance(g, dict) and str(g.get("name") or "").strip()
+    ]
+    check_codes = {str(r.get("code") or "") for r in (checks.get("rows") or [])}
+    joined = join_quotes_with_memberships(
+        quote_data.get("quotes") or [],
+        quote_data.get("memberships") or [],
+    )
+    membership_rows = [r for r in joined if str(r.get("code") or "") in check_codes]
+
     return {
         "trade_date": meta.get("calendar_date") or on_date.isoformat(),
         "context_as_of": meta.get("context_as_of") or "",
         "generated_at": now_iso(),
         "code_count": meta.get("code_count", 0),
-        "point_count": meta.get("point_count"),
+        "point_count": meta.get("point_count") or checks.get("point_count"),
         "ai_ok": ai_ok,
         "ai_error": ai.get("ai_error") or "",
         "ai_model": ai.get("model") or "",
@@ -220,6 +240,9 @@ def build_morning_render_context(*, on_date: date) -> dict[str, Any]:
         "ai_summary_raw": summary,
         "checks": checks,
         "morning_pre": pre,
+        "evening_summary": meta.get("evening_summary") or "",
+        "group_order": group_order,
+        "membership_rows": membership_rows,
         "open_market": ctx.get("open_market") or {},
         "slot": "morning",
         "session_label": "集合竞价结束",

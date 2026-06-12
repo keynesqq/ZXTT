@@ -86,7 +86,11 @@ function renderSlot(slot, data) {
   if (data.report_ready && data.report_href) {
     link.href = data.report_href;
     link.classList.remove("disabled");
-    link.textContent = "打开报告";
+    const serve = data.report_trade_date || "";
+    const hubTd = (window.HUB_STATUS && window.HUB_STATUS.trade_date) || "";
+    link.textContent = (slot === "evening" && serve && hubTd && serve !== hubTd)
+      ? "打开昨晚报告"
+      : "打开报告";
   } else {
     link.href = "#";
     link.classList.add("disabled");
@@ -170,7 +174,7 @@ def build_hub_page(hub: dict[str, Any]) -> str:
     slot_schedule = {
         "morning": "约 9:25",
         "midday": "约 12:50",
-        "evening": "约 22:00",
+        "evening": "昨晚报告 · 服务于今日",
     }
     for slot_id, label in (
         ("morning", "开盘核对卡"),

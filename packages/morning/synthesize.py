@@ -20,7 +20,7 @@ def _llm_timeout() -> float:
 
 
 def _max_tokens() -> int:
-    return int(morning_cfg().get("llm_max_tokens") or 4000)
+    return int(morning_cfg().get("llm_max_tokens") or 8000)
 
 
 def run_morning_synthesize(ctx: dict[str, Any], user_prompt: str) -> dict[str, Any]:

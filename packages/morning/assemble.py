@@ -11,6 +11,7 @@ from core.io import atomic_write_text
 from core.paths import DATA_DIR
 from core.trading_calendar import previous_trading_day
 from morning.checks import build_checks, load_evening_ai, save_checks
+from morning.pre_format import format_stock_prompt_line
 
 _CTX_DIR = DATA_DIR / "morning_context"
 _TREND = DATA_DIR / "auction_trend_{d}.json"
@@ -60,11 +61,7 @@ def build_morning_context(
         tier = "tier0" if row.get("primary_stance") in ("holding", "candidate") else (
             "tier1_star" if row.get("highlight") else "tier1"
         )
-        line = (
-            f"预期={row.get('expected_open') or '—'} | 终缺口={row.get('end_gap')}% | "
-            f"9:20后={row.get('shape_after_920')} | 判定={row.get('verdict')} | "
-            f"素材={row.get('pre_status')}"
-        )
+        line = format_stock_prompt_line(row)
         stocks_prompt.append(
             {
                 "code": row.get("code"),
@@ -95,7 +92,10 @@ def build_morning_context(
             "priority_instructions": (
                 "【报告类型】开盘核对卡 | 【数据】昨晚预期+9:15素材+竞价走势 | "
                 "【目标】9:30起前30分钟纪律\n"
-                "我的/想买的：短评2-4句；其余默认一句；highlight升格短评。"
+                "【我的】【想买的】推送块须逐只覆盖 tier0 列表每一只，不可遗漏。\n"
+                "素材=refresh 且列有新素材标题时，正文须引用该标题，禁止写「无新公告/资讯」。\n"
+                "我的/想买的：短评2-4句；highlight升格短评；其余默认一句。\n"
+                "正文禁止（我的）（想买的）等分组前缀；禁止 verdict 行。"
             ),
             "stocks": stocks_prompt,
         },

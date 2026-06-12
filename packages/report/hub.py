@@ -10,7 +10,7 @@ from typing import Any
 from core.context_as_of import now_iso
 from core.io import atomic_write_text
 from core.paths import DATA_DIR, ROOT
-from core.trading_calendar import today_cn
+from core.trading_calendar import previous_trading_day, today_cn
 
 _HUB_DIR = DATA_DIR / "report_hub"
 _REPORTS = ROOT / "reports"
@@ -36,6 +36,23 @@ def _report_ready(day: date, filename: str) -> bool:
     return (_REPORTS / day.isoformat() / filename).is_file()
 
 
+def _evening_report_day(view_day: date) -> date:
+    """晚间报告落盘日为前一交易日，服务于 view_day 当日交易。"""
+    prev = previous_trading_day(view_day)
+    return prev if prev else view_day
+
+
+def _evening_run_status(view_day: date, run_dir: str) -> dict[str, Any]:
+    today_st = _load_json(DATA_DIR / run_dir / f"{view_day.isoformat()}.json") or {}
+    if today_st.get("status") in ("running", "fail"):
+        return today_st
+    report_day = _evening_report_day(view_day)
+    prev_st = _load_json(DATA_DIR / run_dir / f"{report_day.isoformat()}.json") or {}
+    if prev_st.get("status") == "ok":
+        return prev_st
+    return today_st if today_st else prev_st
+
+
 def _step_meta(slot_id: str) -> tuple[list[str], dict[str, str]]:
     if slot_id == "morning":
         return ["assemble", "ai", "render"], {
@@ -54,13 +71,23 @@ def _step_meta(slot_id: str) -> tuple[list[str], dict[str, str]]:
 def aggregate_hub(day: date) -> dict[str, Any]:
     slots: dict[str, Any] = {}
     for slot_id, label, run_dir, html_name in _SLOTS:
-        run_path = DATA_DIR / run_dir / f"{day.isoformat()}.json"
-        run_st = _load_json(run_path) or {}
-        report_path = f"{day.isoformat()}/{html_name}"
-        report_ready = _report_ready(day, html_name)
+        report_day = _evening_report_day(day) if slot_id == "evening" else day
+        run_st = (
+            _evening_run_status(day, run_dir)
+            if slot_id == "evening"
+            else (_load_json(DATA_DIR / run_dir / f"{day.isoformat()}.json") or {})
+        )
+        report_path = f"{report_day.isoformat()}/{html_name}"
+        report_ready = _report_ready(report_day, html_name)
         status = str(run_st.get("status") or "")
         if not status:
             status = "ok" if report_ready else "idle"
+        detail = run_st.get("detail") or ""
+        if not detail:
+            if report_ready and slot_id == "evening" and report_day != day:
+                detail = f"昨晚报告（{report_day.isoformat()} 盘后）"
+            elif not report_ready:
+                detail = "未运行"
         step_order, step_labels = _step_meta(slot_id)
         slots[slot_id] = {
             "slot": slot_id,
@@ -69,7 +96,7 @@ def aggregate_hub(day: date) -> dict[str, Any]:
             "step_labels": step_labels,
             "status": status,
             "progress_pct": run_st.get("progress_pct", 100 if status == "ok" else 0),
-            "detail": run_st.get("detail") or ("" if report_ready else "未运行"),
+            "detail": detail,
             "current_step": run_st.get("current_step") or "",
             "current_label": run_st.get("current_label") or label,
             "started_at": run_st.get("started_at") or run_st.get("started_at_iso") or "",
@@ -80,6 +107,7 @@ def aggregate_hub(day: date) -> dict[str, Any]:
             "step_durations_ms": run_st.get("step_durations_ms") or {},
             "report_href": report_path if report_ready else "",
             "report_ready": report_ready,
+            "report_trade_date": report_day.isoformat(),
             "sla_ok": run_st.get("sla_ok"),
             "sla_ms": run_st.get("sla_ms"),
             "ai_duration_ms": run_st.get("ai_duration_ms"),
