@@ -20,7 +20,7 @@ def run_evening_pipeline(
 ) -> dict[str, Any]:
     cal = on_date or date.today()
     if not force and not is_trading_day(cal):
-        return {"outcome": "fail", "reason": "not_trading_day", "calendar_date": cal.isoformat()}
+        return {"outcome": "skip", "reason": "not_trading_day", "calendar_date": cal.isoformat()}
 
     begin_run(cal, open_browser=open_browser)
 

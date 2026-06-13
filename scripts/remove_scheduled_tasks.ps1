@@ -5,10 +5,11 @@ $names = @(
     "ZXTT-Morning-Pre",
     "ZXTT-Morning-Report",
     "ZXTT-Midday",
-    "ZXTT-Evening"
+    "ZXTT-Evening",
+    "ZXTT-Eve-News"
 )
 foreach ($n in $names) {
     Unregister-ScheduledTask -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue
     Write-Host "移除: $n"
 }
-Write-Host "完成。"
+Write-Host "Done."

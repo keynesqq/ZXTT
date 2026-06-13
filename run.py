@@ -423,7 +423,15 @@ def cmd_evening(args: argparse.Namespace) -> int:
         open_browser=not args.no_open,
     )
     print(result)
-    return 0 if result.get("outcome") == "ok" else 1
+    return 0 if result.get("outcome") in ("ok", "skip") else 1
+
+
+def cmd_eve_news(args: argparse.Namespace) -> int:
+    from evening.eve_news import run_eve_news_pipeline
+
+    result = run_eve_news_pipeline(on_date=_parse_date(args.date), force=args.force)
+    print(result)
+    return 0 if result.get("outcome") in ("ok", "skip") else 1
 
 
 def cmd_preprocess(args: argparse.Namespace) -> int:
@@ -596,6 +604,10 @@ def main() -> None:
     evening_mod.add_argument("--date", default=None)
     evening_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
 
+    eve_news_mod = sub.add_parser("eve-news", help="交易日前夜 · 休市期间资讯更新（管线待实现）")
+    eve_news_mod.add_argument("--force", action="store_true")
+    eve_news_mod.add_argument("--date", default=None)
+
     midday_mod = sub.add_parser("midday", help="午间管线 · 一键跑通并打开进度页")
     midday_mod.add_argument("--force", action="store_true")
     midday_mod.add_argument("--date", default=None)
@@ -679,6 +691,8 @@ def main() -> None:
         raise SystemExit(cmd_quote_query(args))
     if args.cmd == "evening":
         raise SystemExit(cmd_evening(args))
+    if args.cmd == "eve-news":
+        raise SystemExit(cmd_eve_news(args))
     if args.cmd == "midday":
         raise SystemExit(cmd_midday(args))
     if args.cmd == "hub":

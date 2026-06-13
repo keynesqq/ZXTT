@@ -99,9 +99,14 @@ def market_data_date(calendar_date: date | None = None) -> date:
 
 
 def should_run_evening(on_date: date) -> bool:
-    """22:00 盘后：仅当「明天」是交易日时跑。"""
+    """22:00：「明天」是交易日（用于交易日前夜资讯任务门禁）。"""
     tomorrow = on_date + timedelta(days=1)
     return is_trading_day(tomorrow)
+
+
+def should_run_eve_news(on_date: date) -> bool:
+    """交易日前夜资讯：今日非交易日且明日是交易日（周日晚、长假最后一晚等）。"""
+    return should_run_evening(on_date) and not is_trading_day(on_date)
 
 
 def should_run_intraday(on_date: date) -> bool:

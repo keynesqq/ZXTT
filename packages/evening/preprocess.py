@@ -54,7 +54,7 @@ def run_preprocess_evening(
     cal = on_date or date.today()
     if not force and not is_trading_day(cal):
         return {
-            "outcome": "fail",
+            "outcome": "skip",
             "reason": "not_trading_day",
             "calendar_date": cal.isoformat(),
         }

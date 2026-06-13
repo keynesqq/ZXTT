@@ -15,7 +15,7 @@ from core.exchange_holidays import (
     trading_days_in_year,
     verify_against_calendar,
 )
-from core.trading_calendar import is_trading_day, verify_exchange_calendar
+from core.trading_calendar import is_trading_day, should_run_evening, should_run_eve_news, verify_exchange_calendar
 
 
 class TestExchangeHolidays2026(unittest.TestCase):
@@ -54,6 +54,40 @@ class TestTradingCalendarFallback(unittest.TestCase):
         report = verify_against_calendar(bad, year=2026)
         self.assertFalse(report["ok"])
         self.assertGreater(report["mismatch_count"], 0)
+
+
+class TestShouldRunEvening(unittest.TestCase):
+    def test_friday_evening_skips(self) -> None:
+        self.assertFalse(should_run_evening(date(2026, 6, 5)))
+
+    def test_saturday_evening_skips(self) -> None:
+        self.assertFalse(should_run_evening(date(2026, 6, 6)))
+
+    def test_sunday_evening_runs_for_monday(self) -> None:
+        self.assertTrue(should_run_evening(date(2026, 6, 7)))
+
+    def test_monday_evening_runs(self) -> None:
+        self.assertTrue(should_run_evening(date(2026, 6, 8)))
+
+    def test_holiday_eve_runs_when_tomorrow_opens(self) -> None:
+        # 2026 春节 2/15-2/23 休市，2/24 恢复交易
+        self.assertFalse(is_trading_day_exchange_standard(date(2026, 2, 23)))
+        self.assertTrue(should_run_evening(date(2026, 2, 23)))
+
+
+class TestShouldRunEveNews(unittest.TestCase):
+    def test_trading_day_evening_not_eve_news(self) -> None:
+        self.assertTrue(is_trading_day_exchange_standard(date(2026, 6, 8)))
+        self.assertFalse(should_run_eve_news(date(2026, 6, 8)))
+
+    def test_sunday_eve_news_for_monday(self) -> None:
+        self.assertTrue(should_run_eve_news(date(2026, 6, 7)))
+
+    def test_friday_not_eve_news(self) -> None:
+        self.assertFalse(should_run_eve_news(date(2026, 6, 5)))
+
+    def test_holiday_last_night(self) -> None:
+        self.assertTrue(should_run_eve_news(date(2026, 2, 23)))
 
 
 if __name__ == "__main__":

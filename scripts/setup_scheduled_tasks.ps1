@@ -6,13 +6,14 @@
   交易日标准：周一至周五，除沪深北交易所公告休市日；周六日固定休市（含调休上班日）。
   2026 休市安排见 packages/core/exchange_holidays.py（证监办发〔2025〕130 号）。
 
-  触发器：仅周一～周五；节假日与 bat 内 trading_day_gate 双重跳过。
+  触发器：早/午/晚/全天监控 → 周一～周五 + bat 交易日门禁；交易日前夜资讯 → 每天 22:00 + eve-news 门禁。
   时刻表：
-    09:14  全天监控 intraday（竞价 9:15-9:25 + 正式交易，单进程）
-    09:15  早盘 pre 采集（并行）
-    09:25  早盘集合竞价报告
+    09:14  全天监控 intraday
+    09:15  早盘 pre 采集
+    09:25  早盘报告
     12:50  午间报告
-    22:00  晚间盘后报告
+    22:00  晚间报告（仅交易日）
+    22:00  交易日前夜资讯更新（仅休市前夜：周日晚、长假最后一晚等）
 #>
 param(
     [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
@@ -27,7 +28,9 @@ function New-ZxttTask {
         [string]$BatRelative,
         [string]$At,
         [string]$Description,
-        [TimeSpan]$ExecutionTimeLimit = (New-TimeSpan -Hours 3)
+        [TimeSpan]$ExecutionTimeLimit = (New-TimeSpan -Hours 3),
+        [ValidateSet("Weekly", "Daily")]
+        [string]$Schedule = "Weekly"
     )
     $bat = Join-Path $ProjectRoot $BatRelative
     if (-not (Test-Path $bat)) {
@@ -38,10 +41,14 @@ function New-ZxttTask {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
     }
     $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$bat`"" -WorkingDirectory $ProjectRoot
-    $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At $At
+    if ($Schedule -eq "Daily") {
+        $trigger = New-ScheduledTaskTrigger -Daily -At $At
+    } else {
+        $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At $At
+    }
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit $ExecutionTimeLimit
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description $Description | Out-Null
-    Write-Host "OK  $taskName  @ $At  ->  $BatRelative"
+    Write-Host "OK  $taskName  @ $At ($Schedule)  ->  $BatRelative"
 }
 
 Write-Host "项目目录: $ProjectRoot"
@@ -51,7 +58,8 @@ New-ZxttTask -Name "Intraday-Watch" -BatRelative "scripts\run_intraday_watch.bat
 New-ZxttTask -Name "Morning-Pre" -BatRelative "scripts\run_morning_pre.bat" -At "09:15" -Description "ZXTT morning pre collect"
 New-ZxttTask -Name "Morning-Report" -BatRelative "scripts\run_morning_report.bat" -At "09:25" -Description "ZXTT morning report + wechat"
 New-ZxttTask -Name "Midday" -BatRelative "scripts\run_midday.bat" -At "12:50" -Description "ZXTT midday report + wechat"
-New-ZxttTask -Name "Evening" -BatRelative "scripts\run_evening.bat" -At "22:00" -Description "ZXTT evening report + wechat"
+New-ZxttTask -Name "Evening" -BatRelative "scripts\run_evening.bat" -At "22:00" -Description "ZXTT evening report on trading days"
+New-ZxttTask -Name "Eve-News" -BatRelative "scripts\run_eve_news.bat" -At "22:00" -Schedule Daily -Description "ZXTT eve news update before next trading day"
 
 Write-Host ""
 Write-Host "Done. Open Task Scheduler and filter ZXTT-"
