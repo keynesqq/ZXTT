@@ -53,10 +53,23 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
 .badge.fail { background: rgba(240,82,82,.15); color: #ffb4b4; }
 .badge.warn { background: rgba(230,184,77,.15); color: #f0d48a; }
 .report-body { border-top: 1px solid var(--border); background: var(--bg); }
-.report-frame {
-  display: block; width: 100%; border: none;
-  height: 480px; background: var(--bg); overflow: hidden;
+.report-item > details:not([open]) .report-body {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: none;
 }
+.report-embed { min-height: 0; }
+.report-item > details:not([open]) .report-embed {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+.report-chunk { padding: 0; }
 .report-empty {
   padding: 32px 20px; text-align: center; color: var(--muted); font-size: .9rem;
 }
@@ -153,7 +166,7 @@ function hubRevision(data) {
     const s = slots[id] || {};
     parts.push([
       s.status, s.progress_pct, s.updated_at, s.run_seq,
-      s.report_href, s.report_ready, s.detail,
+      s.report_href, s.report_ready, s.report_rev, s.detail,
     ].join(":"));
   });
   const svc = data.services || {};
@@ -166,32 +179,87 @@ function hubRevision(data) {
   });
   return parts.join("|");
 }
-function resizeReportFrame(frame) {
-  if (!frame || frame.hidden) return;
-  try {
-    const doc = frame.contentDocument || frame.contentWindow?.document;
-    if (!doc) return;
-    const h = Math.max(
-      doc.documentElement?.scrollHeight || 0,
-      doc.body?.scrollHeight || 0,
-      480
-    );
-    frame.style.height = h + "px";
-  } catch (e) { /* 跨域时保留默认高度 */ }
-}
-function bindFrameAutoHeight(frame) {
-  if (!frame || frame.dataset.autoHeight === "1") return;
-  frame.dataset.autoHeight = "1";
-  frame.addEventListener("load", () => {
-    resizeReportFrame(frame);
-    try {
-      const doc = frame.contentDocument;
-      const root = doc?.documentElement;
-      if (root && window.ResizeObserver) {
-        new ResizeObserver(() => resizeReportFrame(frame)).observe(root);
-      }
-    } catch (e) {}
+function templateRevsFromData(data) {
+  const revs = {};
+  const slots = (data && data.slots) || {};
+  Object.keys(slots).forEach((id) => {
+    const s = slots[id];
+    if (s && s.report_ready && s.report_rev) revs[id] = String(s.report_rev);
   });
+  return revs;
+}
+function maybeReloadForNewReports(data) {
+  const next = templateRevsFromData(data);
+  const prev = window.__HUB_TEMPLATE_REVS__ || {};
+  for (const id of Object.keys(next)) {
+    const nextRev = next[id];
+    if (!nextRev) continue;
+    const tpl = document.getElementById("tpl-" + id);
+    const prevRev = prev[id] || "";
+    if (!tpl || (prevRev && prevRev !== nextRev) || (!prevRev && tpl.dataset.rev !== nextRev)) {
+      location.reload();
+      return true;
+    }
+  }
+  return false;
+}
+function runEmbedScripts(container) {
+  container.querySelectorAll("script").forEach((old) => {
+    const s = document.createElement("script");
+    if (old.src) s.src = old.src;
+    else s.textContent = old.textContent;
+    old.replaceWith(s);
+  });
+}
+function unmountReportEmbed(item) {
+  if (!item) return;
+  const slot = item.dataset.slot || "";
+  const embed = item.querySelector(".report-embed");
+  if (embed) embed.innerHTML = "";
+  const modal = document.getElementById(slot + "-summary-modal");
+  if (modal) modal.remove();
+  document.body.style.overflow = "";
+  delete item.dataset.embedRev;
+}
+function collapseReportItem(item, opts) {
+  if (!item) return;
+  const details = item.querySelector("details");
+  if (details && opts?.userClosed) details.dataset.userCollapsed = "1";
+  unmountReportEmbed(item);
+}
+function expandReportItem(item) {
+  const details = item.querySelector("details");
+  if (details) delete details.dataset.userCollapsed;
+}
+function loadReportEmbed(item, data) {
+  const details = item.querySelector("details");
+  const embed = item.querySelector(".report-embed");
+  const empty = item.querySelector(".report-empty");
+  if (!details?.open || !embed) return;
+  const slot = item.dataset.slot || "";
+  if (!data?.report_ready) {
+    unmountReportEmbed(item);
+    if (empty) empty.hidden = false;
+    return;
+  }
+  const tpl = document.getElementById("tpl-" + slot);
+  if (!tpl || !tpl.innerHTML.trim()) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+  const rev = tpl.dataset.rev || "";
+  if (item.dataset.embedRev === rev && embed.innerHTML) {
+    if (empty) empty.hidden = true;
+    return;
+  }
+  unmountReportEmbed(item);
+  const modalId = slot + "-summary-modal";
+  embed.innerHTML = tpl.innerHTML
+    .replace(/id="summary-modal"/g, 'id="' + modalId + '"')
+    .replace(/getElementById\\(['"]summary-modal['"]\\)/g, "getElementById('" + modalId + "')");
+  runEmbedScripts(embed);
+  item.dataset.embedRev = rev;
+  if (empty) empty.hidden = true;
 }
 function renderSlotSteps(container, data) {
   const order = data.step_order || [];
@@ -218,38 +286,6 @@ function renderSlotSteps(container, data) {
     stepsEl.appendChild(li);
   });
 }
-function loadReportFrame(item, data) {
-  const href = item.dataset.reportHref || "";
-  const details = item.querySelector("details");
-  const frame = item.querySelector(".report-frame");
-  const empty = item.querySelector(".report-empty");
-  if (!details || !details.open) return;
-  if (!href) {
-    if (frame) frame.hidden = true;
-    if (empty) empty.hidden = false;
-    return;
-  }
-  const rev = [
-    href,
-    data?.status || item.dataset.status || "",
-    data?.run_seq || "",
-    data?.updated_at || "",
-    data?.report_ready ? "1" : "0",
-  ].join("|");
-  if (frame) {
-    bindFrameAutoHeight(frame);
-    const bust = encodeURIComponent(data?.updated_at || Date.now());
-    const src = href + (href.indexOf("?") >= 0 ? "&" : "?") + "_r=" + bust;
-    if (frame.dataset.rev !== rev) {
-      frame.src = src;
-      frame.dataset.src = href;
-      frame.dataset.rev = rev;
-    }
-    frame.hidden = false;
-    if (frame.contentDocument?.readyState === "complete") resizeReportFrame(frame);
-  }
-  if (empty) empty.hidden = true;
-}
 function renderSlot(slot, data) {
   const el = document.getElementById("slot-" + slot);
   if (!el || !data) return;
@@ -259,16 +295,16 @@ function renderSlot(slot, data) {
     badge.className = "badge " + statusClass(st);
     badge.textContent = statusLabel(st);
   }
-  const href = data.report_href || "";
-  const showFrame = !!(href && (st === "running" || data.report_ready));
-  el.dataset.reportHref = showFrame ? href : "";
+  const showEmbed = !!(data.report_ready && data.report_href);
+  el.dataset.reportHref = showEmbed ? (data.report_href || "") : "";
   el.dataset.status = st;
   const empty = el.querySelector(".report-empty");
   const details = el.querySelector("details");
+  if (details && !details.open) collapseReportItem(el);
   if (empty) {
-    if (showFrame && details?.open) {
+    if (showEmbed && details?.open) {
       empty.hidden = true;
-    } else if (!showFrame) {
+    } else if (!showEmbed) {
       empty.hidden = false;
       const title = empty.querySelector(".empty-title");
       const note = empty.querySelector(".empty-note");
@@ -284,8 +320,8 @@ function renderSlot(slot, data) {
       renderSlotSteps(empty, data);
     }
   }
-  if (st === "running" && details) details.open = true;
-  loadReportFrame(el, data);
+  if (st === "running" && details && !details.dataset.userCollapsed) details.open = true;
+  loadReportEmbed(el, data);
 }
 function renderServices(services) {
   const root = document.getElementById("status-dash");
@@ -346,6 +382,7 @@ function renderServices(services) {
 }
 function applyHub(data) {
   if (!data) return;
+  if (maybeReloadForNewReports(data)) return;
   const rev = hubRevision(data);
   if (rev && rev === __hubRevision) return;
   __hubRevision = rev;
@@ -389,14 +426,18 @@ document.querySelectorAll(".report-item details").forEach((details) => {
     const item = details.closest(".report-item");
     if (!item) return;
     if (details.open) {
+      expandReportItem(item);
       document.querySelectorAll(".report-item details[open]").forEach((other) => {
-        if (other !== details) other.open = false;
+        if (other !== details) {
+          other.open = false;
+          collapseReportItem(other.closest(".report-item"));
+        }
       });
       const slotId = item.dataset.slot || "";
       const slotData = (window.HUB_STATUS && window.HUB_STATUS.slots || {})[slotId] || {};
-      loadReportFrame(item, slotData);
-    } else if (item.querySelector(".report-frame")) {
-      item.querySelector(".report-frame").hidden = true;
+      loadReportEmbed(item, slotData);
+    } else {
+      collapseReportItem(item, { userClosed: true });
       const empty = item.querySelector(".report-empty");
       if (empty && !item.dataset.reportHref) empty.hidden = false;
     }
@@ -443,9 +484,31 @@ def _build_dash_group(group: dict[str, Any]) -> str:
 </section>"""
 
 
+def _build_templates_html(hub: dict[str, Any]) -> str:
+    templates = hub.get("templates") or {}
+    parts: list[str] = []
+    for slot_id, _, _ in _SLOT_ORDER:
+        chunk = templates.get(slot_id)
+        if not chunk or not chunk.get("html"):
+            continue
+        rev = html.escape(str(chunk.get("rev") or ""))
+        parts.append(f'<template id="tpl-{slot_id}" data-rev="{rev}">{chunk["html"]}</template>')
+    return "\n".join(parts)
+
+
+def _template_revs_js(hub: dict[str, Any]) -> str:
+    revs: dict[str, str] = {}
+    for slot_id, _, _ in _SLOT_ORDER:
+        slot = (hub.get("slots") or {}).get(slot_id) or {}
+        if slot.get("report_ready") and slot.get("report_rev"):
+            revs[slot_id] = str(slot["report_rev"])
+    return json.dumps(revs, ensure_ascii=False)
+
+
 def build_hub_page(hub: dict[str, Any]) -> str:
     trade_date = html.escape(str(hub.get("trade_date") or ""))
-    boot = json.dumps(hub, ensure_ascii=False).replace("</", "<\\/")
+    boot_hub = {k: v for k, v in hub.items() if k != "templates"}
+    boot = json.dumps(boot_hub, ensure_ascii=False).replace("</", "<\\/")
     services = hub.get("services") or {}
     overall = services.get("overall") or "idle"
     overall_cls = overall if overall in ("running", "ok", "fail", "warn") else "idle"
@@ -479,12 +542,14 @@ def build_hub_page(hub: dict[str, Any]) -> str:
         <div class="empty-note"></div>
         <div class="empty-bar"><div class="empty-bar-inner" style="width:0%"></div></div>
       </div>
-      <iframe class="report-frame" title="{html.escape(label)}" hidden loading="lazy"></iframe>
+      <div class="report-embed"></div>
     </div>
   </details>
 </li>"""
         )
     list_html = "\n".join(items)
+    templates_html = _build_templates_html(hub)
+    template_revs = _template_revs_js(hub)
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -506,8 +571,10 @@ def build_hub_page(hub: dict[str, Any]) -> str:
     <div class="dash-groups">{dash_groups}</div>
   </section>
   <ul class="report-list">{list_html}</ul>
-  <p class="footer">每 2 秒自动刷新状态与报告 · 展开后内嵌完整报告（高度随内容）</p>
+  <p class="footer">每 2 秒自动刷新状态 · 展开后内嵌完整报告 · 生成完成后自动更新</p>
 </div>
+<div id="hub-templates" hidden>{templates_html}</div>
+<script>window.__HUB_TEMPLATE_REVS__={template_revs};</script>
 <script>window.__HUB_BOOT__={boot};</script>
 <script>{_HUB_JS}</script>
 </body>

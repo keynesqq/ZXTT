@@ -38,6 +38,16 @@ def _report_ready(day: date, filename: str) -> bool:
     return (_REPORTS / day.isoformat() / filename).is_file()
 
 
+def _report_rev(day: date, filename: str) -> str:
+    path = _REPORTS / day.isoformat() / filename
+    if not path.is_file():
+        return ""
+    try:
+        return str(int(path.stat().st_mtime))
+    except OSError:
+        return ""
+
+
 def _evening_prev_report_day(view_day: date) -> date:
     """昨收报告交易日 = 上一交易日（服务于 view_day 当日）。"""
     prev = previous_trading_day(view_day)
@@ -110,6 +120,7 @@ def _aggregate_slot(
         "run_seq": run_st.get("seq") or 0,
         "report_href": f"{report_day.isoformat()}/{html_name}" if report_exists else "",
         "report_ready": report_ready,
+        "report_rev": _report_rev(report_day, html_name) if report_exists else "",
         "report_trade_date": report_day.isoformat(),
         "sla_ok": run_st.get("sla_ok"),
         "sla_ms": run_st.get("sla_ms"),
@@ -146,11 +157,12 @@ _last_feed_at = 0.0
 def _write_hub_feed(payload: dict[str, Any], cal: date) -> Path:
     from report.hub_html import build_hub_status_js
 
+    feed = {k: v for k, v in payload.items() if k != "templates"}
     _HUB_DIR.mkdir(parents=True, exist_ok=True)
     json_path = _HUB_DIR / f"{cal.isoformat()}.json"
-    atomic_write_text(json_path, json.dumps(payload, ensure_ascii=False, indent=2))
+    atomic_write_text(json_path, json.dumps(feed, ensure_ascii=False, indent=2))
     _REPORTS.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(_REPORTS / "hub_status.js", build_hub_status_js(payload))
+    atomic_write_text(_REPORTS / "hub_status.js", build_hub_status_js(feed))
     return json_path
 
 
@@ -165,9 +177,28 @@ def refresh_hub_feed(day: date | None = None, *, force: bool = False) -> Path | 
     return _write_hub_feed(aggregate_hub(cal), cal)
 
 
+def _attach_report_templates(payload: dict[str, Any]) -> None:
+    from report.hub_embed_extract import extract_report_chunk
+
+    templates: dict[str, Any] = {}
+    for slot_id, _, _run_dir, html_name in _SLOTS:
+        slot = payload["slots"].get(slot_id) or {}
+        if not slot.get("report_ready"):
+            continue
+        href = slot.get("report_href") or ""
+        if not href:
+            continue
+        chunk = extract_report_chunk(_REPORTS / Path(href))
+        if chunk:
+            templates[slot_id] = chunk
+            slot["report_rev"] = chunk["rev"]
+    payload["templates"] = templates
+
+
 def publish_hub(day: date | None = None) -> Path:
     cal = _hub_view_day(day)
     payload = aggregate_hub(cal)
+    _attach_report_templates(payload)
     json_path = _write_hub_feed(payload, cal)
 
     from report.hub_html import build_hub_page

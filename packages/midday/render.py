@@ -49,6 +49,10 @@ def run_midday_render(*, on_date: date | None = None) -> dict[str, Any]:
 
     save_report_archive("midday", cal, report_path=str(main_path))
 
+    from report.hub import publish_hub
+
+    publish_hub(on_date=cal)
+
     return {
         "outcome": "ok",
         "path": str(main_path),

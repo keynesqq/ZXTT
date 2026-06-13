@@ -47,7 +47,10 @@ class TestHubEveningServeDay(unittest.TestCase):
         page = build_hub_page(aggregate_hub(date(2026, 6, 12)))
         self.assertIn("report-list", page)
         self.assertIn("<details>", page)
-        self.assertIn("report-frame", page)
+        self.assertIn("report-embed", page)
+        self.assertIn("hub-templates", page)
+        self.assertNotIn("report-frame", page)
+        self.assertNotIn("<iframe", page)
         self.assertIn("昨日作战卡", page)
         self.assertIn("晚间收盘卡", page)
         self.assertNotIn('class="grid"', page)
@@ -62,6 +65,31 @@ class TestHubEveningServeDay(unittest.TestCase):
         hub = aggregate_hub(date(2026, 6, 12))
         self.assertEqual(hub["trade_date"], "2026-06-12")
         self.assertTrue(hub["slots"]["evening"]["report_ready"])
+
+    def test_publish_hub_bakes_templates(self) -> None:
+        from report.hub import publish_hub
+
+        publish_hub(date(2026, 6, 12))
+        page = (ROOT / "reports" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="tpl-evening"', page)
+        self.assertIn('id="tpl-evening_prev"', page)
+        hub = json.loads(
+            (ROOT / "data" / "report_hub" / "2026-06-12.json").read_text(encoding="utf-8")
+        )
+        self.assertNotIn("templates", hub)
+        self.assertIn("evening", hub["slots"])
+        js = (ROOT / "reports" / "hub_status.js").read_text(encoding="utf-8")
+        self.assertNotIn('"templates"', js)
+
+    def test_hub_page_no_templates_in_boot(self) -> None:
+        from report.hub import publish_hub
+
+        publish_hub(date(2026, 6, 12))
+        page = (ROOT / "reports" / "index.html").read_text(encoding="utf-8")
+        boot_raw = page.split("window.__HUB_BOOT__=", 1)[1].split(";</script>", 1)[0]
+        boot = json.loads(boot_raw)
+        self.assertNotIn("templates", boot)
+        self.assertIn("slots", boot)
 
     def test_refresh_hub_feed_writes_js_without_index(self) -> None:
         from report.hub import publish_hub

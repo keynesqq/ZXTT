@@ -30,7 +30,8 @@ def build_morning_live_page(status: dict[str, Any]) -> str:
 <p>状态：{state} · {pct}%</p>
 {err_html}
 <pre style="color:#8fa3be;font-size:12px">{st_json}</pre>
-</div></body></html>"""
+</div>
+</body></html>"""
 
 
 __all__ = ["build_morning_live_page"]

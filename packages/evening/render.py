@@ -86,6 +86,10 @@ def run_evening_render(*, on_date: date | None = None) -> dict[str, Any]:
 
     save_report_archive("evening", cal, report_path=str(main_path))
 
+    from report.hub import publish_hub
+
+    publish_hub(on_date=cal)
+
     return {
 
         "outcome": "ok",
