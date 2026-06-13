@@ -3,8 +3,12 @@
 .SYNOPSIS
   注册 ZXTT 自动化报告 Windows 计划任务。
 
-  时刻表（非交易日由程序内日历自动跳过）：
-    09:15  全天监控 intraday（竞价 9:15-9:25 + 正式交易，单进程）
+  交易日标准：周一至周五，除沪深北交易所公告休市日；周六日固定休市（含调休上班日）。
+  2026 休市安排见 packages/core/exchange_holidays.py（证监办发〔2025〕130 号）。
+
+  触发器：仅周一～周五；节假日与 bat 内 trading_day_gate 双重跳过。
+  时刻表：
+    09:14  全天监控 intraday（竞价 9:15-9:25 + 正式交易，单进程）
     09:15  早盘 pre 采集（并行）
     09:25  早盘集合竞价报告
     12:50  午间报告
@@ -34,7 +38,7 @@ function New-ZxttTask {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
     }
     $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$bat`"" -WorkingDirectory $ProjectRoot
-    $trigger = New-ScheduledTaskTrigger -Daily -At $At
+    $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At $At
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit $ExecutionTimeLimit
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description $Description | Out-Null
     Write-Host "OK  $taskName  @ $At  ->  $BatRelative"

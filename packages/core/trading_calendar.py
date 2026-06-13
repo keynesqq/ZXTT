@@ -3,14 +3,20 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from core.exchange_holidays import (
+    is_trading_day_exchange_standard,
+    verify_against_calendar,
+)
+
 _CN_TZ = ZoneInfo("Asia/Shanghai")
 
 _calendar: set[date] | None = None
 _calendar_fallback = False
+_calendar_source = "unknown"
 
 
 def _load_calendar() -> set[date]:
-    global _calendar, _calendar_fallback
+    global _calendar, _calendar_fallback, _calendar_source
     if _calendar is not None:
         return _calendar
     try:
@@ -20,15 +26,39 @@ def _load_calendar() -> set[date]:
         _calendar = set(df["trade_date"].tolist())
         if not _calendar:
             raise RuntimeError("empty calendar")
+        _calendar_source = "akshare"
     except Exception:
         _calendar = set()
         _calendar_fallback = True
+        _calendar_source = "exchange_standard"
     return _calendar
 
 
 def calendar_using_fallback() -> bool:
     _load_calendar()
     return _calendar_fallback
+
+
+def calendar_source() -> str:
+    _load_calendar()
+    return _calendar_source
+
+
+def verify_exchange_calendar(*, year: int = 2026) -> dict:
+    """对照沪深北交易所休市标准与当前加载的 akshare 日历。"""
+    cal = _load_calendar()
+    if not cal:
+        return {
+            "year": year,
+            "ok": True,
+            "source": calendar_source(),
+            "note": "akshare 不可用，已降级为交易所标准",
+            "mismatch_count": 0,
+            "mismatches": [],
+        }
+    result = verify_against_calendar(cal, year=year)
+    result["source"] = calendar_source()
+    return result
 
 
 def today_cn() -> date:
@@ -39,7 +69,7 @@ def is_trading_day(d: date) -> bool:
     cal = _load_calendar()
     if cal:
         return d in cal
-    return d.weekday() < 5
+    return is_trading_day_exchange_standard(d)
 
 
 def next_trading_day(d: date, *, max_scan: int = 10) -> date | None:

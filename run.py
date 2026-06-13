@@ -477,6 +477,19 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
     return 0 if result.get("outcome") in ("ok", "warn", "skip") else 1
 
 
+def cmd_calendar(args: argparse.Namespace) -> int:
+    from core.trading_calendar import trading_day_info, verify_exchange_calendar
+
+    if args.calendar_cmd == "info":
+        d = _parse_date(args.date) or date.today()
+        print(trading_day_info(d))
+        return 0
+    year = int(args.year)
+    result = verify_exchange_calendar(year=year)
+    print(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_morning(args: argparse.Namespace) -> int:
     phase = (args.phase or "report").strip().lower()
     if phase == "pre":
@@ -640,6 +653,13 @@ def main() -> None:
     intraday.add_argument("--resume", action="store_true", help="跳过已完成分段，续跑未完成段")
     intraday.add_argument("--session", default="all", choices=("all", "auction", "morning", "afternoon"))
 
+    calendar_mod = sub.add_parser("calendar", help="A 股交易日历 · 对照沪深北交易所休市标准")
+    calendar_sub = calendar_mod.add_subparsers(dest="calendar_cmd", required=True)
+    cal_info = calendar_sub.add_parser("info", help="今日是否交易日、下一交易日")
+    cal_info.add_argument("--date", default=None)
+    cal_verify = calendar_sub.add_parser("verify", help="对照 akshare 与交易所 2026 休市安排")
+    cal_verify.add_argument("--year", default="2026")
+
     args = parser.parse_args()
     if args.cmd == "cls" and args.cls_cmd == "collect":
         raise SystemExit(cmd_cls_collect(args))
@@ -677,6 +697,8 @@ def main() -> None:
         raise SystemExit(cmd_auction(args))
     if args.cmd == "intraday":
         raise SystemExit(cmd_intraday(args))
+    if args.cmd == "calendar":
+        raise SystemExit(cmd_calendar(args))
     raise SystemExit(2)
 
 
