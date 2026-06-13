@@ -10,7 +10,7 @@ from typing import Any
 from core.context_as_of import now_iso
 from core.io import atomic_write_text
 from core.paths import DATA_DIR, ROOT
-from core.trading_calendar import previous_trading_day, today_cn
+from core.trading_calendar import market_data_date, previous_trading_day, today_cn
 
 _HUB_DIR = DATA_DIR / "report_hub"
 _REPORTS = ROOT / "reports"
@@ -113,6 +113,11 @@ def _aggregate_slot(
     }
 
 
+def _hub_view_day(day: date | None = None) -> date:
+    """休市日展示上一交易日作战卡；交易日展示当日。"""
+    return market_data_date(day or today_cn())
+
+
 def aggregate_hub(day: date) -> dict[str, Any]:
     slots: dict[str, Any] = {}
     for slot_id, label, run_dir, html_name in _SLOTS:
@@ -131,7 +136,7 @@ def aggregate_hub(day: date) -> dict[str, Any]:
 
 
 def publish_hub(day: date | None = None) -> Path:
-    cal = day or today_cn()
+    cal = _hub_view_day(day)
     payload = aggregate_hub(cal)
     _HUB_DIR.mkdir(parents=True, exist_ok=True)
     json_path = _HUB_DIR / f"{cal.isoformat()}.json"
@@ -148,7 +153,7 @@ def publish_hub(day: date | None = None) -> Path:
 
 
 def hub_url(day: date | None = None) -> str:
-    cal = day or today_cn()
+    cal = _hub_view_day(day)
     index = (_REPORTS / "index.html").resolve()
     return f"{index.as_uri()}?date={cal.isoformat()}"
 
@@ -196,7 +201,7 @@ def open_hub(
     force: bool = False,
 ) -> str:
     """刷新 hub 数据；force=True 时计划任务启动必打开/聚焦浏览器（忽略同 slot 已开）。"""
-    cal = day or today_cn()
+    cal = _hub_view_day(day)
     publish_hub(cal)
     url = hub_url(cal)
     if not open_browser:

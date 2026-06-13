@@ -51,6 +51,16 @@ class TestHubEveningServeDay(unittest.TestCase):
         self.assertNotIn('class="grid"', page)
         self.assertNotIn("report-link", page)
 
+    def test_non_trading_day_shows_last_trade_date(self) -> None:
+        from report.hub import _hub_view_day, publish_hub
+
+        self.assertEqual(_hub_view_day(date(2026, 6, 13)), date(2026, 6, 12))
+        path = publish_hub(date(2026, 6, 13))
+        self.assertEqual(path.name, "2026-06-12.json")
+        hub = aggregate_hub(date(2026, 6, 12))
+        self.assertEqual(hub["trade_date"], "2026-06-12")
+        self.assertTrue(hub["slots"]["evening"]["report_ready"])
+
 
 if __name__ == "__main__":
     unittest.main()
