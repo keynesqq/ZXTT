@@ -2,6 +2,8 @@
 
 A 股数据采集工具集，**9 个基础采集模块** + **午间 / 晚间报告**经 `run.py` 统一调用。模块说明见 [`docs/packaged-modules.md`](docs/packaged-modules.md)。
 
+重构技术方案与迭代验证计划见 [`docs/refactor-plan.md`](docs/refactor-plan.md)。
+
 ## 安装
 
 ```bash
