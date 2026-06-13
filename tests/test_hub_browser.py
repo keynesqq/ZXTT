@@ -52,6 +52,15 @@ class TestHubBrowser(unittest.TestCase):
         hub_mod.open_hub(day, open_browser=True, slot="midday")
         mock_wb.open.assert_called_once()
 
+    @patch.object(hub_mod, "webbrowser")
+    @patch.object(hub_mod, "publish_hub")
+    def test_scheduled_task_force_reopens_same_slot(self, _pub, mock_wb) -> None:
+        day = date(2026, 6, 11)
+        hub_mod.open_hub_for_scheduled_task(day, slot="intraday")
+        mock_wb.open.reset_mock()
+        hub_mod.open_hub_for_scheduled_task(day, slot="intraday")
+        mock_wb.open.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

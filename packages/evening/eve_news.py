@@ -15,6 +15,11 @@ def run_eve_news_pipeline(
     cal = on_date or date.today()
     if not force and not should_run_eve_news(cal):
         return {"outcome": "skip", "reason": "not_eve_news_day", "calendar_date": cal.isoformat()}
+
+    from report.hub import open_hub_for_scheduled_task
+
+    open_hub_for_scheduled_task(cal, slot="eve_news")
+
     return {
         "outcome": "skip",
         "reason": "pipeline_not_implemented",

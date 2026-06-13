@@ -63,11 +63,10 @@ def begin_run(day: date, *, open_browser: bool = True) -> None:
         "seq": 0,
     }
     write_status(status, day)
-    from report.hub import publish_hub, open_hub
+    from report.hub import open_hub_for_scheduled_task
 
-    publish_hub(day)
     if open_browser:
-        open_hub(day, open_browser=True, slot="morning")
+        open_hub_for_scheduled_task(day, slot="morning")
 
 
 def step_begin(day: date, step: str, detail: str = "") -> None:

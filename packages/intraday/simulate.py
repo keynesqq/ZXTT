@@ -18,6 +18,9 @@ def _demo_date(on_date: date | None) -> date:
 
 def run_intraday_simulate(*, on_date: date | None = None) -> dict:
     day = _demo_date(on_date)
+    from report.hub import open_hub_for_scheduled_task
+
+    open_hub_for_scheduled_task(day, slot="intraday")
     auction_result = run_auction_simulate(on_date=day)
     morning_schedule, interval = _schedule_morning(day)
     afternoon_schedule, _ = _schedule_afternoon(day)

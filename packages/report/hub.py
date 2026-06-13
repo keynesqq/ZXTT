@@ -188,17 +188,29 @@ def _slot_opened_today(cal: date, slot: str) -> bool:
     return slot in (session.get("slots") or {})
 
 
-def open_hub(day: date | None = None, *, open_browser: bool = True, slot: str | None = None) -> str:
+def open_hub(
+    day: date | None = None,
+    *,
+    open_browser: bool = True,
+    slot: str | None = None,
+    force: bool = False,
+) -> str:
+    """刷新 hub 数据；force=True 时计划任务启动必打开/聚焦浏览器（忽略同 slot 已开）。"""
     cal = day or today_cn()
     publish_hub(cal)
     url = hub_url(cal)
     if not open_browser:
         return url
-    if slot and _slot_opened_today(cal, slot):
+    if not force and slot and _slot_opened_today(cal, slot):
         return url
     webbrowser.open(url, new=0)
     _save_browser_session(cal, url, slot=slot)
     return url
 
 
-__all__ = ["aggregate_hub", "publish_hub", "open_hub", "hub_url", "_SLOTS"]
+def open_hub_for_scheduled_task(day: date | None = None, *, slot: str) -> str:
+    """计划任务一启动即打开/聚焦共用进度页，便于监控运行状态。"""
+    return open_hub(day, open_browser=True, slot=slot, force=True)
+
+
+__all__ = ["aggregate_hub", "publish_hub", "open_hub", "open_hub_for_scheduled_task", "hub_url", "_SLOTS"]

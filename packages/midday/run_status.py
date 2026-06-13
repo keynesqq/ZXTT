@@ -83,9 +83,9 @@ def publish_status(day: date, status: dict[str, Any]) -> None:
 
 
 def open_report_browser(day: date) -> None:
-    from report.hub import open_hub
+    from report.hub import open_hub_for_scheduled_task
 
-    open_hub(day, open_browser=True, slot="midday")
+    open_hub_for_scheduled_task(day, slot="midday")
 
 
 def begin_run(day: date, *, open_browser: bool = True) -> dict[str, Any]:

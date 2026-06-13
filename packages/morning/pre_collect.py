@@ -45,6 +45,10 @@ def run_morning_pre(
     if not force and not is_trading_day(cal):
         return {"outcome": "skip", "reason": "not_trading_day", "calendar_date": cal.isoformat()}
 
+    from report.hub import open_hub_for_scheduled_task
+
+    open_hub_for_scheduled_task(cal, slot="morning_pre")
+
     codes, code_src = codes_from_quote(cal)
     if not codes:
         return {

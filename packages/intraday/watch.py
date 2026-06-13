@@ -206,6 +206,10 @@ def run_intraday_watch(
         save_watch_manifest(outcome="skip", on_date=day, message="非交易日", session=session)
         return {"outcome": "skip", "message": "非交易日"}
 
+    from report.hub import open_hub_for_scheduled_task
+
+    open_hub_for_scheduled_task(day, slot="intraday")
+
     phases = resolve_phases(session=session, resume=resume, on_date=day)
     if not phases:
         status = phase_status(day)
