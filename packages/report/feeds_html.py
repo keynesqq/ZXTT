@@ -251,7 +251,6 @@ def build_feeds_page(ctx: dict[str, Any], *, nav_mode: str = "relative") -> str:
 <body data-trade-date="{trade_date}">
 <div class="wrap">
   {nav}
-  <h1>公告资讯</h1>
   {source_banner}
   <p class="meta">{trade_date} · {stock_count} 只 · {item_count} 条 · {lb_text}{updated_text}</p>
   {stale_hint}

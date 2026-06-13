@@ -279,7 +279,6 @@ def build_snapshot_page(ctx: dict[str, Any], *, nav_mode: str = "relative") -> s
 <body data-trade-date="{trade_date}">
 <div class="wrap">
   {nav}
-  <h1>行情快照</h1>
   {source_banner}
   <p class="meta">{trade_date} · {row_count} 条 · 展示口径：同花顺（腾讯校验/补全){gen_part}</p>
   {stale_hint}

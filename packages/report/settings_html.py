@@ -379,9 +379,6 @@ def _block_rows(blocks: list[dict]) -> str:
 
 def _build_form_html(view: dict[str, Any]) -> str:
     ann = view.get("announcement") or {}
-    account_hint = ""
-    if view.get("account_dir"):
-        account_hint = f'<p class="hint">同花顺账号：{html.escape(str(view["account_dir"]))}</p>'
     blocks_error = str(view.get("blocks_error") or "")
     err_hidden = "" if blocks_error else " hidden"
     err_text = html.escape(blocks_error)
@@ -392,7 +389,6 @@ def _build_form_html(view: dict[str, Any]) -> str:
 
     return f"""<div class="settings-scope">
   <p class="settings-offline" id="settings-offline-hint">当前为离线文件，无法保存。请使用 <code>python run.py open</code> 打开。</p>
-  {account_hint}
   <div class="settings-form">
     <nav class="settings-cards" role="tablist" aria-label="设置分类">
       <button type="button" class="settings-card active" role="tab" aria-selected="true" data-panel="schedule" id="settings-tab-schedule">
@@ -469,8 +465,6 @@ def build_settings_page(view: dict[str, Any] | None = None, *, nav_mode: str = "
 <body>
 <div class="wrap">
   {nav}
-  <h1>ZXTT 设置</h1>
-  <p class="meta">保存后写入 config.yaml；报告需手动执行 evening / midday / morning 命令。</p>
   {form}
   <footer>个人研究工具 · ZXTT</footer>
 </div>

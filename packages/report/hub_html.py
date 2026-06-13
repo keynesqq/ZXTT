@@ -16,15 +16,17 @@ _SLOT_ORDER: tuple[tuple[str, str, str], ...] = (
 
 _HUB_CSS = """
 :root {
-  --bg: #0c1118; --surface: #151d2b; --surface-2: #1c2738;
-  --text: #e8eef6; --muted: #8fa3be; --accent: #4f8cff;
-  --border: #2a384f;
+  --bg:#0f1419; --card:#1a2332; --text:#e7ecf3; --muted:#8b98a8;
+  --accent:#4d9fff; --up:#f5444a; --down:#00b050; --border:#2a3544;
+  --warn:#e6a817;
+  --surface: var(--card);
+  --surface-2: rgba(0,0,0,.12);
   --radius: 12px;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
-.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }
+body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); line-height: 1.55; }
+.wrap { max-width: 1100px; margin: 0 auto; }
 h1 { margin: 0 0 6px; font-size: 1.5rem; }
 .sub { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
 .report-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -50,7 +52,7 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
   font-size: .72rem; font-weight: 600;
 }
 .badge.idle { background: #243044; color: var(--muted); }
-.badge.running { background: rgba(79,140,255,.2); color: #a8c7ff; }
+.badge.running { background: rgba(77,159,255,.2); color: #a8c7ff; }
 .badge.ok { background: rgba(62,207,142,.15); color: #9ee8c0; }
 .badge.fail { background: rgba(240,82,82,.15); color: #ffb4b4; }
 .badge.warn { background: rgba(230,184,77,.15); color: #f0d48a; }
@@ -93,9 +95,12 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
 .dash-title { font-size: 1rem; font-weight: 700; margin: 0; }
 .dash-updated { font-size: .75rem; color: var(--muted); margin-left: auto; }
 .dash-groups {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 .dash-group {
+  min-width: 0;
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 12px;
 }
@@ -390,7 +395,7 @@ function applyHub(data) {
   __hubRevision = rev;
   window.HUB_STATUS = data;
   const td = document.getElementById("trade-date");
-  if (td) td.textContent = data.trade_date || "";
+  if (td) td.textContent = data.trade_date ? ("交易日 " + data.trade_date) : "";
   document.body.dataset.tradeDate = data.trade_date || "";
   renderServices(data.services);
   const slots = data.slots || {};
@@ -558,14 +563,12 @@ def build_hub_page(hub: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZXTT 作战卡 · {trade_date}</title>
+<title>ZXTT · {trade_date}</title>
 <style>{_HUB_CSS}{web_topbar_css()}</style>
 </head>
 <body data-trade-date="{trade_date}">
 <div class="wrap">
   {nav}
-  <h1>ZXTT 作战卡</h1>
-  <p class="sub">交易日 <strong id="trade-date">{trade_date}</strong> · 点击标题展开对应报告</p>
   <section class="status-dash" id="status-dash">
     <div class="dash-head">
       <h2 class="dash-title">系统状态</h2>
@@ -575,7 +578,6 @@ def build_hub_page(hub: dict[str, Any]) -> str:
     <div class="dash-groups">{dash_groups}</div>
   </section>
   <ul class="report-list">{list_html}</ul>
-  <p class="footer">每 2 秒自动刷新状态 · 展开后内嵌完整报告 · 生成完成后自动更新</p>
 </div>
 <div id="hub-templates" hidden>{templates_html}</div>
 <script>window.__HUB_TEMPLATE_REVS__={template_revs};</script>

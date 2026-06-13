@@ -11,8 +11,10 @@ _WEB_TOPBAR_CSS = """
   margin-bottom: 18px; padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
+.web-topbar-left { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .web-brand { font-weight: 600; font-size: 0.95rem; color: var(--text); text-decoration: none; }
 .web-brand:hover { color: var(--accent); text-decoration: none; }
+.web-trade-date { color: var(--muted); font-size: 0.88rem; font-weight: 400; }
 .web-topnav { display: flex; gap: 8px; flex-wrap: wrap; }
 .web-topnav a {
   display: inline-flex; align-items: center; padding: 4px 12px;
@@ -20,7 +22,7 @@ _WEB_TOPBAR_CSS = """
   color: var(--text); background: rgba(0,0,0,.15); text-decoration: none;
 }
 .web-topnav a:hover { border-color: var(--accent); color: var(--accent); }
-.web-topnav a.active { border-color: var(--accent); background: rgba(79,140,255,.12); color: var(--accent); }
+.web-topnav a.active { border-color: var(--accent); background: rgba(77,159,255,.15); color: var(--accent); }
 """
 
 
@@ -47,8 +49,18 @@ def web_topbar(*, active: str, trade_date: str = "", nav_mode: str = "relative")
         cls = ' class="active"' if active == nav_id else ""
         return f'<a href="{href}"{cls}>{html.escape(label)}</a>'
 
+    trade_label = ""
+    if trade_date:
+        trade_label = (
+            f'<span class="web-trade-date" id="trade-date">'
+            f"交易日 {html.escape(trade_date)}</span>"
+        )
+
     return f"""<header class="web-topbar">
-  <a class="web-brand" href="{brand_href}">ZXTT</a>
+  <div class="web-topbar-left">
+    <a class="web-brand" href="{brand_href}">ZXTT</a>
+    {trade_label}
+  </div>
   <nav class="web-topnav" aria-label="站点导航">
     {_link(hub_href, "作战卡", "hub")}
     {_link(snap_href, "行情快照", "snapshot")}
