@@ -7,6 +7,7 @@
   2026 休市安排见 packages/core/exchange_holidays.py（证监办发〔2025〕130 号）。
 
   触发器：早/午/晚/全天监控 → 周一～周五 + bat 交易日门禁；交易日前夜资讯 → 每天 22:00 + eve-news 门禁。
+  启动方式：wscript + run_hidden.vbs，无 cmd 黑窗（任务属性 Hidden）。
   时刻表：
     09:14  全天监控 intraday
     09:15  早盘 pre 采集
@@ -36,17 +37,22 @@ function New-ZxttTask {
     if (-not (Test-Path $bat)) {
         throw "缺少脚本: $bat"
     }
+    $vbs = Join-Path $ProjectRoot "scripts\run_hidden.vbs"
+    if (-not (Test-Path $vbs)) {
+        throw "缺少脚本: $vbs"
+    }
     $taskName = "ZXTT-$Name"
     if ($Force -or (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
     }
-    $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$bat`"" -WorkingDirectory $ProjectRoot
+    # wscript //B + run_hidden.vbs：用户登录态下无 cmd 黑窗弹出（仍可在同会话开浏览器）
+    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B `"$vbs`" `"$BatRelative`"" -WorkingDirectory $ProjectRoot
     if ($Schedule -eq "Daily") {
         $trigger = New-ScheduledTaskTrigger -Daily -At $At
     } else {
         $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At $At
     }
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit $ExecutionTimeLimit
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit $ExecutionTimeLimit -Hidden
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description $Description | Out-Null
     Write-Host "OK  $taskName  @ $At ($Schedule)  ->  $BatRelative"
 }
