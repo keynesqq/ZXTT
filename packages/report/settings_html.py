@@ -450,11 +450,13 @@ def _build_form_html(view: dict[str, Any]) -> str:
 </div>"""
 
 
-def build_settings_page(view: dict[str, Any] | None = None) -> str:
+def build_settings_page(view: dict[str, Any] | None = None, *, nav_mode: str = "relative") -> str:
+    from core.trading_calendar import market_data_date, today_cn
     from report.settings import build_settings_view
 
     view = view if view is not None else build_settings_view()
-    nav = web_topbar(active="settings", nav_mode="server")
+    trade_date = market_data_date(today_cn()).isoformat()
+    nav = web_topbar(active="settings", trade_date=trade_date, nav_mode=nav_mode)
     form = _build_form_html(view)
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">

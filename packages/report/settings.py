@@ -222,6 +222,10 @@ def apply_settings(payload: dict) -> dict:
 
     if ann is not None:
         result["announcement"] = ann
+
+    from report.hub import publish_settings
+
+    publish_settings()
     return result
 
 

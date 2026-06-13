@@ -229,7 +229,7 @@ def _build_grouped_table(rows: list[dict], groups: list[str]) -> str:
 def _render_watchlist_source_banner(ctx: dict[str, Any], *, nav_mode: str = "relative") -> str:
     src = ctx.get("watchlist_source") or {}
     if src.get("error"):
-        set_href = "/settings" if nav_mode == "server" else "http://127.0.0.1:8765/settings"
+        set_href = "/reports/settings.html" if nav_mode == "server" else "settings.html"
         return (
             f'<p class="meta watchlist-source">股票来源：同花顺 PC · '
             f'<span class="muted">{html.escape(str(src["error"]))}</span> · '
@@ -240,7 +240,7 @@ def _render_watchlist_source_banner(ctx: dict[str, Any], *, nav_mode: str = "rel
     if extra > 0:
         groups += f" 等{len(src.get('watchlist_groups') or [])}组"
     wl_n = int(src.get("watchlist_stock_count") or 0)
-    set_href = "/settings" if nav_mode == "server" else "http://127.0.0.1:8765/settings"
+    set_href = "/reports/settings.html" if nav_mode == "server" else "settings.html"
     return (
         f'<p class="meta watchlist-source">股票列表：<strong>同花顺 PC</strong> · '
         f'板块 {groups or "未配置"} · 共 {wl_n} 只 · '

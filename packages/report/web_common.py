@@ -33,12 +33,14 @@ def web_topbar(*, active: str, trade_date: str = "", nav_mode: str = "relative")
     if nav_mode == "server":
         hub_href = f"/reports/index.html{q}"
         snap_href = f"/reports/snapshot.html{q}"
-        set_href = "/settings"
+        feeds_href = f"/reports/feeds.html{q}"
+        set_href = f"/reports/settings.html{q}"
         brand_href = hub_href
     else:
         hub_href = f"index.html{q}"
         snap_href = f"snapshot.html{q}"
-        set_href = "http://127.0.0.1:8765/settings"
+        feeds_href = f"feeds.html{q}"
+        set_href = f"settings.html{q}"
         brand_href = hub_href
 
     def _link(href: str, label: str, nav_id: str) -> str:
@@ -50,6 +52,7 @@ def web_topbar(*, active: str, trade_date: str = "", nav_mode: str = "relative")
   <nav class="web-topnav" aria-label="站点导航">
     {_link(hub_href, "作战卡", "hub")}
     {_link(snap_href, "行情快照", "snapshot")}
+    {_link(feeds_href, "公告资讯", "feeds")}
     {_link(set_href, "设置", "settings")}
   </nav>
 </header>"""

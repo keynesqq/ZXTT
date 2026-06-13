@@ -235,9 +235,13 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/settings":
-            from report.settings_html import build_settings_page
+            settings = _safe_file("reports/settings.html")
+            if settings is None:
+                from report.settings_html import build_settings_page
 
-            self._send_html(build_settings_page())
+                self._send_html(build_settings_page(nav_mode="server"))
+                return
+            self._send_file(settings)
             return
 
         if path in ("/", "/reports/index.html"):
@@ -254,6 +258,22 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             self._send_file(snap)
+            return
+
+        if path in ("/feeds", "/reports/feeds.html"):
+            feeds = _safe_file("reports/feeds.html")
+            if feeds is None:
+                self.send_error(404)
+                return
+            self._send_file(feeds)
+            return
+
+        if path == "/reports/settings.html":
+            settings = _safe_file("reports/settings.html")
+            if settings is None:
+                self.send_error(404)
+                return
+            self._send_file(settings)
             return
 
         if path.startswith("/reports/"):
@@ -314,7 +334,8 @@ def run_app_server(
     print(f"ZXTT: {base}")
     print(f"  作战卡 {base}/reports/index.html")
     print(f"  快照 {base}/reports/snapshot.html")
-    print(f"  设置 {base}/settings")
+    print(f"  公告资讯 {base}/reports/feeds.html")
+    print(f"  设置 {base}/reports/settings.html")
     print("Ctrl+C 停止")
 
     if open_browser:

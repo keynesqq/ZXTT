@@ -205,6 +205,24 @@ def publish_snapshot(day: date | None = None) -> Path:
     return _REPORTS / "snapshot.html"
 
 
+def publish_feeds(day: date | None = None) -> Path:
+    from report.feeds_data import load_feeds_page_context
+    from report.feeds_html import build_feeds_page
+
+    cal = _hub_view_day(day)
+    ctx = load_feeds_page_context(cal)
+    atomic_write_text(_REPORTS / "feeds.html", build_feeds_page(ctx))
+    return _REPORTS / "feeds.html"
+
+
+def publish_settings(day: date | None = None) -> Path:
+    from report.settings_html import build_settings_page
+
+    _hub_view_day(day)
+    atomic_write_text(_REPORTS / "settings.html", build_settings_page())
+    return _REPORTS / "settings.html"
+
+
 def publish_hub(day: date | None = None) -> Path:
     cal = _hub_view_day(day)
     payload = aggregate_hub(cal)
@@ -216,6 +234,8 @@ def publish_hub(day: date | None = None) -> Path:
     html = build_hub_page(payload)
     atomic_write_text(_REPORTS / "index.html", html)
     publish_snapshot(cal)
+    publish_feeds(cal)
+    publish_settings(cal)
     return json_path
 
 
@@ -232,6 +252,21 @@ def hub_url(day: date | None = None, *, prefer_server: bool = True) -> str:
             pass
     index = (_REPORTS / "index.html").resolve()
     return f"{index.as_uri()}{q}"
+
+
+def feeds_url(day: date | None = None, *, prefer_server: bool = True) -> str:
+    cal = _hub_view_day(day)
+    q = f"?date={cal.isoformat()}"
+    if prefer_server:
+        try:
+            from report.app_server import DEFAULT_PORT, is_server_running, server_url
+
+            if is_server_running(DEFAULT_PORT):
+                return server_url(DEFAULT_PORT, f"/reports/feeds.html{q}")
+        except ImportError:
+            pass
+    feeds = (_REPORTS / "feeds.html").resolve()
+    return f"{feeds.as_uri()}{q}"
 
 
 def snapshot_url(day: date | None = None, *, prefer_server: bool = True) -> str:
@@ -323,10 +358,13 @@ __all__ = [
     "aggregate_hub",
     "publish_hub",
     "publish_snapshot",
+    "publish_feeds",
+    "publish_settings",
     "refresh_hub_feed",
     "open_hub",
     "open_hub_for_scheduled_task",
     "hub_url",
     "snapshot_url",
+    "feeds_url",
     "_SLOTS",
 ]
