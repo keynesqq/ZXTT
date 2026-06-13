@@ -195,6 +195,16 @@ def _attach_report_templates(payload: dict[str, Any]) -> None:
     payload["templates"] = templates
 
 
+def publish_snapshot(day: date | None = None) -> Path:
+    from report.snapshot_data import load_snapshot_page_context
+    from report.snapshot_html import build_snapshot_page
+
+    cal = _hub_view_day(day)
+    ctx = load_snapshot_page_context(cal)
+    atomic_write_text(_REPORTS / "snapshot.html", build_snapshot_page(ctx))
+    return _REPORTS / "snapshot.html"
+
+
 def publish_hub(day: date | None = None) -> Path:
     cal = _hub_view_day(day)
     payload = aggregate_hub(cal)
@@ -205,6 +215,7 @@ def publish_hub(day: date | None = None) -> Path:
 
     html = build_hub_page(payload)
     atomic_write_text(_REPORTS / "index.html", html)
+    publish_snapshot(cal)
     return json_path
 
 
@@ -212,6 +223,12 @@ def hub_url(day: date | None = None) -> str:
     cal = _hub_view_day(day)
     index = (_REPORTS / "index.html").resolve()
     return f"{index.as_uri()}?date={cal.isoformat()}"
+
+
+def snapshot_url(day: date | None = None) -> str:
+    cal = _hub_view_day(day)
+    snap = (_REPORTS / "snapshot.html").resolve()
+    return f"{snap.as_uri()}?date={cal.isoformat()}"
 
 
 _BROWSER_MARKER = _HUB_DIR / "browser_session.json"
@@ -277,9 +294,11 @@ def open_hub_for_scheduled_task(day: date | None = None, *, slot: str) -> str:
 __all__ = [
     "aggregate_hub",
     "publish_hub",
+    "publish_snapshot",
     "refresh_hub_feed",
     "open_hub",
     "open_hub_for_scheduled_task",
     "hub_url",
+    "snapshot_url",
     "_SLOTS",
 ]

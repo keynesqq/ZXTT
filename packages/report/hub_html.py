@@ -5,6 +5,8 @@ import html
 import json
 from typing import Any
 
+from report.web_common import web_topbar, web_topbar_css
+
 _SLOT_ORDER: tuple[tuple[str, str, str], ...] = (
     ("evening_prev", "昨日作战卡", "昨收 · 服务今日"),
     ("morning", "开盘核对卡", "约 9:25"),
@@ -550,16 +552,18 @@ def build_hub_page(hub: dict[str, Any]) -> str:
     list_html = "\n".join(items)
     templates_html = _build_templates_html(hub)
     template_revs = _template_revs_js(hub)
+    nav = web_topbar(active="hub", trade_date=str(hub.get("trade_date") or ""))
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZXTT 作战卡 · {trade_date}</title>
-<style>{_HUB_CSS}</style>
+<style>{_HUB_CSS}{web_topbar_css()}</style>
 </head>
 <body data-trade-date="{trade_date}">
 <div class="wrap">
+  {nav}
   <h1>ZXTT 作战卡</h1>
   <p class="sub">交易日 <strong id="trade-date">{trade_date}</strong> · 点击标题展开对应报告</p>
   <section class="status-dash" id="status-dash">
