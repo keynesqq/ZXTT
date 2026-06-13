@@ -200,6 +200,9 @@ def build_evening_bundle(*, on_date: date | None = None) -> dict[str, Any]:
         for g in (structure.get("groups") or [])
         if isinstance(g, dict) and str(g.get("name") or "").strip()
     ]
+    from watchlist.refresh import align_group_order_for_reports
+
+    group_order = align_group_order_for_reports(group_order)
 
     whitelist: list[str] = []
     seen: set[str] = set()

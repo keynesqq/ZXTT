@@ -65,6 +65,12 @@ footer { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top
 .snap-panel { display: none; }
 .snap-panel.active { display: block; }
 .snap-panel-empty { color: var(--muted); font-size: 0.85rem; padding: 12px 0; }
+.watchlist-source {
+  margin: 0 0 16px; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: rgba(77,159,255,.08);
+  font-size: 0.82rem; line-height: 1.55;
+}
+.watchlist-source a { color: var(--accent); }
 """
 
 _SNAPSHOT_JS = """
@@ -220,7 +226,30 @@ def _build_grouped_table(rows: list[dict], groups: list[str]) -> str:
 </div>"""
 
 
-def build_snapshot_page(ctx: dict[str, Any]) -> str:
+def _render_watchlist_source_banner(ctx: dict[str, Any], *, nav_mode: str = "relative") -> str:
+    src = ctx.get("watchlist_source") or {}
+    if src.get("error"):
+        set_href = "/settings" if nav_mode == "server" else "http://127.0.0.1:8765/settings"
+        return (
+            f'<p class="meta watchlist-source">股票来源：同花顺 PC · '
+            f'<span class="muted">{html.escape(str(src["error"]))}</span> · '
+            f'<a href="{set_href}">前往设置</a></p>'
+        )
+    groups = "、".join(html.escape(g) for g in (src.get("watchlist_groups") or [])[:8])
+    extra = len(src.get("watchlist_groups") or []) - 8
+    if extra > 0:
+        groups += f" 等{len(src.get('watchlist_groups') or [])}组"
+    wl_n = int(src.get("watchlist_stock_count") or 0)
+    set_href = "/settings" if nav_mode == "server" else "http://127.0.0.1:8765/settings"
+    return (
+        f'<p class="meta watchlist-source">股票列表：<strong>同花顺 PC</strong> · '
+        f'板块 {groups or "未配置"} · 共 {wl_n} 只 · '
+        f'<span class="muted">行情快照与开盘/午间/晚间三报告共用此列表（设置页勾选）</span> · '
+        f'<a href="{set_href}">修改板块</a></p>'
+    )
+
+
+def build_snapshot_page(ctx: dict[str, Any], *, nav_mode: str = "relative") -> str:
     trade_date = html.escape(str(ctx.get("trade_date") or ""))
     row_count = int(ctx.get("row_count") or 0)
     generated_at = html.escape(str(ctx.get("generated_at") or ""))
@@ -232,7 +261,8 @@ def build_snapshot_page(ctx: dict[str, Any]) -> str:
         )
     gen_part = f" · 快照 {generated_at}" if generated_at else ""
     table_html = _build_grouped_table(ctx.get("rows") or [], ctx.get("snapshot_groups") or [])
-    nav = web_topbar(active="snapshot", trade_date=str(ctx.get("trade_date") or ""))
+    source_banner = _render_watchlist_source_banner(ctx, nav_mode=nav_mode)
+    nav = web_topbar(active="snapshot", trade_date=str(ctx.get("trade_date") or ""), nav_mode=nav_mode)
     boot = json.dumps(
         {"trade_date": ctx.get("trade_date"), "row_count": row_count, "source": ctx.get("source")},
         ensure_ascii=False,
@@ -250,6 +280,7 @@ def build_snapshot_page(ctx: dict[str, Any]) -> str:
 <div class="wrap">
   {nav}
   <h1>行情快照</h1>
+  {source_banner}
   <p class="meta">{trade_date} · {row_count} 条 · 展示口径：同花顺（腾讯校验/补全){gen_part}</p>
   {stale_hint}
   <section class="snapshot-section">

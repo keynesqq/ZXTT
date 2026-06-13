@@ -219,16 +219,34 @@ def publish_hub(day: date | None = None) -> Path:
     return json_path
 
 
-def hub_url(day: date | None = None) -> str:
+def hub_url(day: date | None = None, *, prefer_server: bool = True) -> str:
     cal = _hub_view_day(day)
+    q = f"?date={cal.isoformat()}"
+    if prefer_server:
+        try:
+            from report.app_server import DEFAULT_PORT, is_server_running, server_url
+
+            if is_server_running(DEFAULT_PORT):
+                return server_url(DEFAULT_PORT, f"/reports/index.html{q}")
+        except ImportError:
+            pass
     index = (_REPORTS / "index.html").resolve()
-    return f"{index.as_uri()}?date={cal.isoformat()}"
+    return f"{index.as_uri()}{q}"
 
 
-def snapshot_url(day: date | None = None) -> str:
+def snapshot_url(day: date | None = None, *, prefer_server: bool = True) -> str:
     cal = _hub_view_day(day)
+    q = f"?date={cal.isoformat()}"
+    if prefer_server:
+        try:
+            from report.app_server import DEFAULT_PORT, is_server_running, server_url
+
+            if is_server_running(DEFAULT_PORT):
+                return server_url(DEFAULT_PORT, f"/reports/snapshot.html{q}")
+        except ImportError:
+            pass
     snap = (_REPORTS / "snapshot.html").resolve()
-    return f"{snap.as_uri()}?date={cal.isoformat()}"
+    return f"{snap.as_uri()}{q}"
 
 
 _BROWSER_MARKER = _HUB_DIR / "browser_session.json"
@@ -272,11 +290,21 @@ def open_hub(
     open_browser: bool = True,
     slot: str | None = None,
     force: bool = False,
+    start_path: str | None = None,
 ) -> str:
     """刷新 hub 数据；force=True 时计划任务启动必打开/聚焦浏览器（忽略同 slot 已开）。"""
     cal = _hub_view_day(day)
     publish_hub(cal)
-    url = hub_url(cal)
+    try:
+        from report.app_server import DEFAULT_PORT, ensure_server, server_url
+
+        ensure_server(DEFAULT_PORT)
+        if start_path:
+            url = server_url(DEFAULT_PORT, start_path)
+        else:
+            url = hub_url(cal, prefer_server=True)
+    except OSError:
+        url = hub_url(cal, prefer_server=False)
     if not open_browser:
         return url
     if not force and slot and _slot_opened_today(cal, slot):

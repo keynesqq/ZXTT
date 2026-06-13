@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import copy
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
 
+from core.io import atomic_write_text
 from core.paths import CONFIG_PATH, ROOT
+
+_config_lock = threading.Lock()
 
 
 def load_config() -> dict:
@@ -19,6 +24,20 @@ def load_config() -> dict:
 
 def load_config_cached() -> dict:
     return copy.deepcopy(load_config())
+
+
+def save_config(cfg: dict) -> None:
+    text = yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    atomic_write_text(CONFIG_PATH, text)
+
+
+def mutate_config(mutator: Callable[[dict], None]) -> dict:
+    """在进程内串行 load → mutator → save，避免并发写 config 互相覆盖。"""
+    with _config_lock:
+        cfg = load_config()
+        mutator(cfg)
+        save_config(cfg)
+        return cfg
 
 
 def normalize_code(code: str) -> str:

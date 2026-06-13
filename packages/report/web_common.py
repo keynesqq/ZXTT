@@ -28,20 +28,29 @@ def web_topbar_css() -> str:
     return _WEB_TOPBAR_CSS
 
 
-def web_topbar(*, active: str, trade_date: str = "") -> str:
+def web_topbar(*, active: str, trade_date: str = "", nav_mode: str = "relative") -> str:
     q = f"?date={html.escape(trade_date)}" if trade_date else ""
-    hub_href = f"index.html{q}"
-    snap_href = f"snapshot.html{q}"
+    if nav_mode == "server":
+        hub_href = f"/reports/index.html{q}"
+        snap_href = f"/reports/snapshot.html{q}"
+        set_href = "/settings"
+        brand_href = hub_href
+    else:
+        hub_href = f"index.html{q}"
+        snap_href = f"snapshot.html{q}"
+        set_href = "http://127.0.0.1:8765/settings"
+        brand_href = hub_href
 
     def _link(href: str, label: str, nav_id: str) -> str:
         cls = ' class="active"' if active == nav_id else ""
         return f'<a href="{href}"{cls}>{html.escape(label)}</a>'
 
     return f"""<header class="web-topbar">
-  <a class="web-brand" href="{hub_href}">ZXTT</a>
+  <a class="web-brand" href="{brand_href}">ZXTT</a>
   <nav class="web-topnav" aria-label="站点导航">
     {_link(hub_href, "作战卡", "hub")}
     {_link(snap_href, "行情快照", "snapshot")}
+    {_link(set_href, "设置", "settings")}
   </nav>
 </header>"""
 

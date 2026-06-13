@@ -471,6 +471,72 @@ def cmd_hub(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_open(args: argparse.Namespace) -> int:
+    from report.app_server import DEFAULT_PORT, ensure_server, open_in_browser, run_app_server
+    from report.hub import open_hub
+
+    port = int(getattr(args, "port", DEFAULT_PORT) or DEFAULT_PORT)
+    start_path = "/settings" if getattr(args, "settings", False) else "/reports/index.html"
+    if args.date:
+        start_path = f"{start_path}?date={args.date}"
+
+    if getattr(args, "foreground", False):
+        run_app_server(port=port, open_browser=not args.no_browser, start_path=start_path)
+        return 0
+
+    open_hub(_parse_date(args.date), open_browser=False)
+    status = ensure_server(port)
+    if not getattr(args, "no_browser", False):
+        if getattr(args, "settings", False):
+            url = open_in_browser(port, "/settings")
+        else:
+            url = open_in_browser(port, start_path)
+    else:
+        from report.app_server import server_url
+
+        url = server_url(port, start_path if not getattr(args, "settings", False) else "/settings")
+    print({"outcome": "ok", "server": status, "url": url})
+    return 0
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    from report.app_server import (
+        DEFAULT_PORT,
+        ensure_server,
+        is_server_running,
+        run_app_server,
+        stop_server,
+    )
+
+    port = int(getattr(args, "port", DEFAULT_PORT) or DEFAULT_PORT)
+    if getattr(args, "stop", False):
+        if stop_server(port):
+            print(f"已停止端口 {port} 上的 ZXTT 服务")
+        elif is_server_running(port):
+            print(f"端口 {port} 有服务在运行，但无 PID 记录。")
+            return 1
+        else:
+            print("服务未在运行")
+        return 0
+
+    if getattr(args, "foreground", False):
+        try:
+            run_app_server(port=port, open_browser=not args.no_browser)
+        except OSError as e:
+            print({"outcome": "error", "reason": str(e)})
+            return 1
+        return 0
+
+    status = ensure_server(port)
+    print({"outcome": "ok", "server": status, "url": f"http://127.0.0.1:{port}/"})
+    return 0
+
+
+def cmd_settings(args: argparse.Namespace) -> int:
+    args.settings = True
+    return cmd_open(args)
+
+
 def cmd_reproduce(args: argparse.Namespace) -> int:
     from report.archive import reproduce_report
 
@@ -617,6 +683,25 @@ def main() -> None:
     hub_mod.add_argument("--date", default=None)
     hub_mod.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
 
+    open_mod = sub.add_parser("open", help="启动本地 Web 并打开作战卡（对照老项目 open）")
+    open_mod.add_argument("--date", default=None)
+    open_mod.add_argument("--no-browser", action="store_true")
+    open_mod.add_argument("--settings", action="store_true", help="打开后直接切到设置页")
+    open_mod.add_argument("--foreground", action="store_true", help="前台运行服务（Ctrl+C 停止）")
+    open_mod.add_argument("--port", type=int, default=8765)
+
+    serve_mod = sub.add_parser("serve", help="本地 Web 服务（作战卡/快照/设置 API）")
+    serve_mod.add_argument("--foreground", action="store_true")
+    serve_mod.add_argument("--no-browser", action="store_true")
+    serve_mod.add_argument("--stop", action="store_true", help="停止后台服务")
+    serve_mod.add_argument("--port", type=int, default=8765)
+
+    set_mod = sub.add_parser("settings", help="等同 open --settings")
+    set_mod.add_argument("--date", default=None)
+    set_mod.add_argument("--no-browser", action="store_true")
+    set_mod.add_argument("--foreground", action="store_true")
+    set_mod.add_argument("--port", type=int, default=8765)
+
     reproduce_mod = sub.add_parser("reproduce", help="报告复现 · 校验归档或按层重跑")
     reproduce_mod.add_argument("--slot", required=True, choices=("morning", "midday", "evening"))
     reproduce_mod.add_argument(
@@ -697,6 +782,12 @@ def main() -> None:
         raise SystemExit(cmd_midday(args))
     if args.cmd == "hub":
         raise SystemExit(cmd_hub(args))
+    if args.cmd == "open":
+        raise SystemExit(cmd_open(args))
+    if args.cmd == "serve":
+        raise SystemExit(cmd_serve(args))
+    if args.cmd == "settings":
+        raise SystemExit(cmd_settings(args))
     if args.cmd == "reproduce":
         raise SystemExit(cmd_reproduce(args))
     if args.cmd == "morning":

@@ -14,7 +14,8 @@ from quote.snapshot.cache import (
     structure_from_row_dicts,
     structure_from_stocks,
 )
-from watchlist.loader import load_stocks, watchlist_group_names
+from watchlist.loader import load_stocks, watchlist_group_names, watchlist_source_summary
+from watchlist.refresh import codes_match_watchlist
 
 _CN_TZ = ZoneInfo("Asia/Shanghai")
 _STALE_SEC = 6 * 3600
@@ -75,11 +76,13 @@ def load_snapshot_page_context(day: date | None = None) -> dict[str, Any]:
 
     cache = load_snapshot_cache_file(on_date=cal)
     if cache and isinstance(cache.get("rows"), list) and cache["rows"]:
-        rows = normalize_snapshot_rows(cache["rows"])
-        structure = structure_from_row_dicts(rows)
-        generated_at = str(cache.get("generated_at") or "")
-        quotes_pending = bool(cache.get("quotes_pending"))
-        source = "snapshot_cache"
+        candidate = normalize_snapshot_rows(cache["rows"])
+        if codes_match_watchlist(candidate):
+            rows = candidate
+            structure = structure_from_row_dicts(rows)
+            generated_at = str(cache.get("generated_at") or "")
+            quotes_pending = bool(cache.get("quotes_pending"))
+            source = "snapshot_cache"
 
     if not rows:
         qq = load_quote_query_cache(on_date=cal)
@@ -88,7 +91,7 @@ def load_snapshot_page_context(day: date | None = None) -> dict[str, Any]:
                 qq.get("quotes") or [],
                 qq.get("memberships") or [],
             )
-            if joined:
+            if joined and codes_match_watchlist(joined):
                 rows = normalize_snapshot_rows(joined)
                 structure = qq.get("structure") if isinstance(qq.get("structure"), dict) else None
                 generated_at = str(qq.get("updated_at") or "")
@@ -119,6 +122,7 @@ def load_snapshot_page_context(day: date | None = None) -> dict[str, Any]:
 
     groups = _ordered_groups(rows, structure)
     stale = _is_stale(generated_at, quotes_pending=quotes_pending)
+    wl_src = watchlist_source_summary()
 
     return {
         "trade_date": cal.isoformat(),
@@ -129,6 +133,7 @@ def load_snapshot_page_context(day: date | None = None) -> dict[str, Any]:
         "snapshot_stale": stale,
         "quotes_pending": quotes_pending,
         "source": source,
+        "watchlist_source": wl_src,
     }
 
 

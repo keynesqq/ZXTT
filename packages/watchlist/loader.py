@@ -10,9 +10,42 @@ def watchlist_group_names() -> list[str]:
     return [str(n).strip() for n in names if str(n).strip()]
 
 
-def load_stocks() -> list[StockItem]:
-    """全 analyze_blocks 白名单自选（对照老项目 watchlist.load_stocks）。"""
-    return load_stocks_from_ths()
+def schedule_group_names() -> list[str]:
+    """与自选板块相同（快照与三报告共用设置页勾选）。"""
+    return watchlist_group_names()
+
+
+def watchlist_source_summary() -> dict:
+    """供快照/设置页展示：快照与三报告共用同花顺 PC + 设置页勾选板块。"""
+    groups = watchlist_group_names()
+    try:
+        stocks = load_stocks()
+    except ThsBlocksError as e:
+        return {
+            "source_label": "同花顺 PC",
+            "watchlist_groups": groups,
+            "watchlist_stock_count": 0,
+            "error": str(e),
+        }
+    codes = {normalize_code(s.code) for s in stocks if normalize_code(s.code)}
+    return {
+        "source_label": "同花顺 PC",
+        "watchlist_groups": groups,
+        "watchlist_stock_count": len(codes),
+        "error": "",
+    }
+
+
+def align_group_order(group_order: list[str]) -> list[str]:
+    """仅保留设置页勾选板块，并按其顺序排列（快照 → 三报告）。"""
+    preferred = watchlist_group_names()
+    present = set(group_order)
+    return [g for g in preferred if g in present]
+
+
+def load_stocks(*, for_schedule: bool = False) -> list[StockItem]:
+    """同花顺 PC custom_block · 设置页勾选板块（快照与三报告共用）。"""
+    return load_stocks_from_ths(for_schedule=False)
 
 
 def watchlist_by_code_from(stocks: list[StockItem]) -> dict[str, StockItem]:

@@ -41,10 +41,12 @@ def _read_text(path: Path) -> str:
 
 
 def resolve_account_dir(cfg: dict | None = None) -> Path:
-    cfg = cfg or ths_cfg()
-    raw = (cfg.get("account_dir") or "").strip()
+    merged = ths_cfg()
+    if cfg:
+        merged = {**merged, **cfg}
+    raw = (merged.get("account_dir") or "").strip()
     if not raw:
-        raise ThsBlocksError("请在 config.yaml 配置 ths.account_dir")
+        raise ThsBlocksError("请在 config.yaml 配置 ths.account_dir（或 legacy.zxreport_config 继承老项目）")
     path = Path(raw).expanduser()
     if not path.is_dir():
         raise ThsBlocksError(f"同花顺账号目录不存在: {path}")
@@ -138,6 +140,23 @@ def _parse_analyze_blocks(ab: dict) -> tuple[set[str], set[str]]:
     return by_name, by_id
 
 
+def _analyze_filter(*, for_schedule: bool = False) -> tuple[set[str], set[str]]:
+    if for_schedule:
+        sched_ab = (load_config().get("schedule") or {}).get("analyze_blocks")
+        if sched_ab:
+            by_name, by_id = _parse_analyze_blocks(sched_ab)
+            if by_name or by_id:
+                return by_name, by_id
+    merged = ths_cfg()
+    by_name, by_id = _parse_analyze_blocks(merged.get("analyze_blocks") or {})
+    if not by_name and not by_id:
+        raise ThsBlocksError(
+            "ths.analyze_blocks 未配置板块白名单（by_name 或 by_id）。"
+            " 请运行 python run.py settings 配置同花顺自选板块。"
+        )
+    return by_name, by_id
+
+
 def _block_selected(preview: BlockPreview, by_name: set[str], by_id: set[str]) -> bool:
     if by_name and preview.group_name in by_name:
         return True
@@ -148,12 +167,30 @@ def _block_selected(preview: BlockPreview, by_name: set[str], by_id: set[str]) -
     return False
 
 
-def load_selected_blocks() -> list[BlockPreview]:
+def list_all_blocks(account_dir: Path | None = None) -> list[BlockPreview]:
+    """列出账号下全部 custom_block（不做白名单过滤，供设置页同步板块列表）。"""
     cfg = ths_cfg()
-    account_dir = resolve_account_dir(cfg)
-    by_name, by_id = _parse_analyze_blocks(cfg.get("analyze_blocks") or {})
-    if not by_name and not by_id:
-        raise ThsBlocksError("ths.analyze_blocks 未配置板块白名单")
+    account_dir = account_dir or resolve_account_dir(cfg)
+    name_map = load_block_name_map(account_dir)
+    block_dir = account_dir / "custom_block"
+    previews: list[BlockPreview] = []
+    if block_dir.is_dir():
+        for path in sorted(block_dir.iterdir(), key=lambda p: p.name):
+            if not path.is_file() or not path.name.isdigit():
+                continue
+            try:
+                preview = parse_custom_block_file(path, name_map)
+                if preview.codes:
+                    previews.append(preview)
+            except (json.JSONDecodeError, OSError, ValueError):
+                continue
+    previews.sort(key=lambda p: (p.group_name, p.block_id))
+    return previews
+
+
+def load_selected_blocks(*, for_schedule: bool = False) -> list[BlockPreview]:
+    account_dir = resolve_account_dir()
+    by_name, by_id = _analyze_filter(for_schedule=for_schedule)
     name_map = load_block_name_map(account_dir)
     block_dir = account_dir / "custom_block"
     selected: list[BlockPreview] = []
@@ -170,12 +207,17 @@ def load_selected_blocks() -> list[BlockPreview]:
             if _block_selected(preview, by_name, by_id):
                 selected.append(preview)
     if not selected:
-        raise ThsBlocksError(f"白名单 [{', '.join(sorted(by_name | by_id))}] 未匹配到任何板块")
+        hint = ", ".join(sorted(by_name | by_id))
+        raise ThsBlocksError(f"白名单 [{hint}] 未匹配到任何板块")
+    from watchlist.loader import watchlist_group_names
+
+    order_rank = {name: i for i, name in enumerate(watchlist_group_names())}
+    selected.sort(key=lambda p: (order_rank.get(p.group_name, 10_000), p.group_name, p.block_id))
     return selected
 
 
-def load_stocks_from_ths() -> list[StockItem]:
-    blocks = load_selected_blocks()
+def load_stocks_from_ths(*, for_schedule: bool = False) -> list[StockItem]:
+    blocks = load_selected_blocks(for_schedule=for_schedule)
     items: list[StockItem] = []
     for block in blocks:
         for code in block.codes:

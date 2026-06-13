@@ -137,3 +137,36 @@ wechat:
   title_prefix: "ZXTT 盘后"
   midday_title_prefix: "ZXTT 午间"
   morning_title_prefix: "ZXTT 开盘"
+
+# 报告时间点（设置页可改；仅参考，不自动跑任务）
+schedule:
+  sync_windows_tasks: false
+  analyze_blocks:
+    by_name:
+    - 我的
+    - 想买的
+  slots:
+    evening:
+      enabled: false
+      time: "22:00"
+      label: 晚间收盘卡
+    morning_pre:
+      enabled: false
+      time: "09:15"
+      label: 盘前·竞价前采集
+    morning_auction:
+      enabled: false
+      time: "09:15:05"
+      label: 盘前·竞价
+    morning_open:
+      enabled: false
+      time: "09:25"
+      label: 开盘核对卡
+    midday_snapshot:
+      enabled: false
+      time: "11:35"
+      label: 午间·上午快照
+    midday:
+      enabled: false
+      time: "12:50"
+      label: 午间作战卡
