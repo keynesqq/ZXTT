@@ -19,7 +19,7 @@ body {
   background: var(--bg); color: var(--text);
   margin: 0; padding: 24px; line-height: 1.55;
 }
-.wrap { max-width: 100%; margin: 0 auto; }
+.wrap { max-width: 1100px; margin: 0 auto; }
 h1 { font-size: 1.45rem; margin: 0 0 8px; }
 .meta { color: var(--muted); font-size: 0.88rem; margin-bottom: 20px; }
 section {

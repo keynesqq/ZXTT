@@ -18,7 +18,7 @@ body {
   background: var(--bg); color: var(--text);
   margin: 0; padding: 24px; line-height: 1.55;
 }
-.wrap-narrow { max-width: 820px; margin: 0 auto; }
+.wrap { max-width: 1100px; margin: 0 auto; }
 h1 { font-size: 1.45rem; margin: 0 0 8px; }
 .meta { color: var(--muted); font-size: 0.88rem; margin-bottom: 20px; }
 footer { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 28px; }
@@ -467,7 +467,7 @@ def build_settings_page(view: dict[str, Any] | None = None, *, nav_mode: str = "
 <style>{_BASE_CSS}{web_topbar_css()}{_SETTINGS_CSS}</style>
 </head>
 <body>
-<div class="wrap-narrow">
+<div class="wrap">
   {nav}
   <h1>ZXTT 设置</h1>
   <p class="meta">保存后写入 config.yaml；报告需手动执行 evening / midday / morning 命令。</p>
