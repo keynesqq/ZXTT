@@ -59,6 +59,13 @@ def record_source(
     payload.setdefault("sources", {})[name] = merged
     payload["updated_at_iso"] = now_iso()
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        from core.trading_calendar import market_data_date
+        from report.hub import refresh_hub_feed
+
+        refresh_hub_feed(market_data_date(trade_date))
+    except Exception:
+        pass
 
 
 @contextmanager

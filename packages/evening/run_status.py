@@ -73,13 +73,15 @@ def refresh_live_html(day: date, status: dict[str, Any]) -> Path:
 
 
 def publish_status(day: date, status: dict[str, Any]) -> None:
-    """仅写 JSON + run_status.js，供已打开的页面局部刷新。"""
+    """写 JSON + 进度页 + hub 轮询源，供已打开主 WEB 局部刷新。"""
     status["seq"] = int(status.get("seq") or 0) + 1
     write_status(status, day)
+    if status.get("status") == "running":
+        refresh_live_html(day, status)
     write_run_status_js(day, status)
-    from report.hub import publish_hub
+    from report.hub import refresh_hub_feed
 
-    publish_hub(day)
+    refresh_hub_feed(day, force=True)
 
 
 def open_report_browser(day: date) -> None:

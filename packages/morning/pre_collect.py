@@ -105,6 +105,9 @@ def run_morning_pre(
     _PRE_DIR.mkdir(parents=True, exist_ok=True)
     path = _PRE_DIR / f"{cal.isoformat()}.json"
     atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
+    from report.hub import refresh_hub_feed
+
+    refresh_hub_feed(cal, force=True)
     return {"outcome": "ok", "path": str(path), **payload}
 
 

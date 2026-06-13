@@ -48,6 +48,8 @@ class TestSystemStatus(unittest.TestCase):
         self.assertIn("行情数据", page)
         self.assertIn("资讯公告", page)
         self.assertIn("renderServices", page)
+        self.assertIn("pollHubViaScript", page)
+        self.assertIn("hubRevision", page)
 
 
 if __name__ == "__main__":

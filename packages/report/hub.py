@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 import webbrowser
 from datetime import date
 from pathlib import Path
@@ -73,16 +74,18 @@ def _aggregate_slot(
     if slot_id == "evening_prev":
         report_day = _evening_prev_report_day(view_day)
         run_st = _slot_run_status(report_day, "evening_run") if run_dir else {}
-        report_ready = _report_ready(report_day, html_name)
+        report_exists = _report_ready(report_day, html_name)
+        report_ready = report_exists
         status = "ok" if report_ready else "idle"
         detail = f"昨收报告 · 交易日 {report_day.isoformat()}" if report_ready else "昨收未就绪"
     else:
         report_day = view_day
         run_st = _slot_run_status(view_day, run_dir) if run_dir else {}
-        report_ready = _report_ready(report_day, html_name)
+        report_exists = _report_ready(report_day, html_name)
         status = str(run_st.get("status") or "")
         if not status:
-            status = "ok" if report_ready else "idle"
+            status = "ok" if report_exists else "idle"
+        report_ready = status == "ok" and report_exists
         detail = run_st.get("detail") or ""
         if not detail:
             detail = "完成" if report_ready else "未运行"
@@ -104,7 +107,8 @@ def _aggregate_slot(
         "error": run_st.get("error") or "",
         "steps_done": run_st.get("steps_done") or [],
         "step_durations_ms": run_st.get("step_durations_ms") or {},
-        "report_href": f"{report_day.isoformat()}/{html_name}" if report_ready else "",
+        "run_seq": run_st.get("seq") or 0,
+        "report_href": f"{report_day.isoformat()}/{html_name}" if report_exists else "",
         "report_ready": report_ready,
         "report_trade_date": report_day.isoformat(),
         "sla_ok": run_st.get("sla_ok"),
@@ -135,20 +139,41 @@ def aggregate_hub(day: date) -> dict[str, Any]:
     }
 
 
-def publish_hub(day: date | None = None) -> Path:
-    cal = _hub_view_day(day)
-    payload = aggregate_hub(cal)
+_FEED_MIN_INTERVAL_SEC = 0.8
+_last_feed_at = 0.0
+
+
+def _write_hub_feed(payload: dict[str, Any], cal: date) -> Path:
+    from report.hub_html import build_hub_status_js
+
     _HUB_DIR.mkdir(parents=True, exist_ok=True)
     json_path = _HUB_DIR / f"{cal.isoformat()}.json"
     atomic_write_text(json_path, json.dumps(payload, ensure_ascii=False, indent=2))
+    _REPORTS.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(_REPORTS / "hub_status.js", build_hub_status_js(payload))
+    return json_path
 
-    from report.hub_html import build_hub_page, build_hub_status_js
+
+def refresh_hub_feed(day: date | None = None, *, force: bool = False) -> Path | None:
+    """轻量刷新：JSON + hub_status.js，供已打开主 WEB 轮询；不整页重写 index.html。"""
+    global _last_feed_at
+    now = time.monotonic()
+    if not force and now - _last_feed_at < _FEED_MIN_INTERVAL_SEC:
+        return None
+    _last_feed_at = now
+    cal = _hub_view_day(day)
+    return _write_hub_feed(aggregate_hub(cal), cal)
+
+
+def publish_hub(day: date | None = None) -> Path:
+    cal = _hub_view_day(day)
+    payload = aggregate_hub(cal)
+    json_path = _write_hub_feed(payload, cal)
+
+    from report.hub_html import build_hub_page
 
     html = build_hub_page(payload)
-    _REPORTS.mkdir(parents=True, exist_ok=True)
-    index_path = _REPORTS / "index.html"
-    atomic_write_text(index_path, html)
-    atomic_write_text(_REPORTS / "hub_status.js", build_hub_status_js(payload))
+    atomic_write_text(_REPORTS / "index.html", html)
     return json_path
 
 
@@ -218,4 +243,12 @@ def open_hub_for_scheduled_task(day: date | None = None, *, slot: str) -> str:
     return open_hub(day, open_browser=True, slot=slot, force=True)
 
 
-__all__ = ["aggregate_hub", "publish_hub", "open_hub", "open_hub_for_scheduled_task", "hub_url", "_SLOTS"]
+__all__ = [
+    "aggregate_hub",
+    "publish_hub",
+    "refresh_hub_feed",
+    "open_hub",
+    "open_hub_for_scheduled_task",
+    "hub_url",
+    "_SLOTS",
+]

@@ -109,9 +109,20 @@ h1 { margin: 0 0 6px; font-size: 1.5rem; }
   grid-column: 2; height: 3px; background: #243044; border-radius: 2px; overflow: hidden; margin-top: 2px;
 }
 .dash-item-bar > div { height: 100%; background: var(--accent); transition: width .3s; }
+.hub-steps {
+  list-style: none; margin: 10px auto 0; padding: 0; max-width: 320px; text-align: left;
+  font-size: .78rem; color: var(--muted);
+}
+.hub-steps li { padding: 3px 0; }
+.hub-steps li.done { color: #9ee8c0; }
+.hub-steps li.active { color: #a8c7ff; font-weight: 600; }
+.hub-steps li.fail { color: #ffb4b4; }
 """
 
 _HUB_JS = """
+let __hubRevision = "";
+let __hubPollPending = false;
+
 function qp(name) {
   const m = new RegExp("[?&]" + name + "=([^&]*)").exec(location.search);
   return m ? decodeURIComponent(m[1]) : "";
@@ -133,6 +144,27 @@ function reportStatusLabel(st) {
 }
 function statusLabel(st) {
   return reportStatusLabel(st);
+}
+function hubRevision(data) {
+  if (!data) return "";
+  const slots = data.slots || {};
+  const parts = [data.updated_at || ""];
+  ["evening_prev", "morning", "midday", "evening"].forEach((id) => {
+    const s = slots[id] || {};
+    parts.push([
+      s.status, s.progress_pct, s.updated_at, s.run_seq,
+      s.report_href, s.report_ready, s.detail,
+    ].join(":"));
+  });
+  const svc = data.services || {};
+  parts.push(svc.updated_at || "", svc.collect_updated_at || "", svc.overall || "");
+  (svc.groups || []).forEach((g) => {
+    parts.push(g.id || "", g.status || "");
+    (g.items || []).forEach((it) => {
+      parts.push([it.id, it.status, it.detail, it.updated_at].join("~"));
+    });
+  });
+  return parts.join("|");
 }
 function resizeReportFrame(frame) {
   if (!frame || frame.hidden) return;
@@ -161,7 +193,32 @@ function bindFrameAutoHeight(frame) {
     } catch (e) {}
   });
 }
-function loadReportFrame(item) {
+function renderSlotSteps(container, data) {
+  const order = data.step_order || [];
+  if (!order.length) return;
+  let stepsEl = container.querySelector(".hub-steps");
+  if (!stepsEl) {
+    stepsEl = document.createElement("ul");
+    stepsEl.className = "hub-steps";
+    container.appendChild(stepsEl);
+  }
+  const done = new Set(data.steps_done || []);
+  const current = data.current_step || "";
+  const st = data.status || "idle";
+  const labels = data.step_labels || {};
+  stepsEl.innerHTML = "";
+  order.forEach((key) => {
+    const li = document.createElement("li");
+    let cls = "pending";
+    if (done.has(key)) cls = "done";
+    else if (key === current && st === "running") cls = "active";
+    else if (key === current && st === "fail") cls = "fail";
+    li.className = cls;
+    li.textContent = labels[key] || key;
+    stepsEl.appendChild(li);
+  });
+}
+function loadReportFrame(item, data) {
   const href = item.dataset.reportHref || "";
   const details = item.querySelector("details");
   const frame = item.querySelector(".report-frame");
@@ -172,11 +229,21 @@ function loadReportFrame(item) {
     if (empty) empty.hidden = false;
     return;
   }
+  const rev = [
+    href,
+    data?.status || item.dataset.status || "",
+    data?.run_seq || "",
+    data?.updated_at || "",
+    data?.report_ready ? "1" : "0",
+  ].join("|");
   if (frame) {
     bindFrameAutoHeight(frame);
-    if (!frame.src || frame.dataset.src !== href) {
-      frame.src = href;
+    const bust = encodeURIComponent(data?.updated_at || Date.now());
+    const src = href + (href.indexOf("?") >= 0 ? "&" : "?") + "_r=" + bust;
+    if (frame.dataset.rev !== rev) {
+      frame.src = src;
       frame.dataset.src = href;
+      frame.dataset.rev = rev;
     }
     frame.hidden = false;
     if (frame.contentDocument?.readyState === "complete") resizeReportFrame(frame);
@@ -192,29 +259,33 @@ function renderSlot(slot, data) {
     badge.className = "badge " + statusClass(st);
     badge.textContent = statusLabel(st);
   }
-  const ready = !!(data.report_ready && data.report_href);
-  el.dataset.reportHref = ready ? data.report_href : "";
+  const href = data.report_href || "";
+  const showFrame = !!(href && (st === "running" || data.report_ready));
+  el.dataset.reportHref = showFrame ? href : "";
   el.dataset.status = st;
   const empty = el.querySelector(".report-empty");
-  if (empty && !ready) {
-    empty.hidden = false;
-    const title = empty.querySelector(".empty-title");
-    const note = empty.querySelector(".empty-note");
-    const bar = empty.querySelector(".empty-bar-inner");
-    if (title) {
-      title.textContent = st === "running" ? "报告生成中…" : st === "fail" ? "报告生成失败" : "报告未就绪";
-    }
-    if (note) note.textContent = data.detail || data.error || "";
-    if (bar) {
-      const pct = Math.max(0, Math.min(100, Number(data.progress_pct) || 0));
-      bar.style.width = st === "running" ? pct + "%" : "0%";
+  const details = el.querySelector("details");
+  if (empty) {
+    if (showFrame && details?.open) {
+      empty.hidden = true;
+    } else if (!showFrame) {
+      empty.hidden = false;
+      const title = empty.querySelector(".empty-title");
+      const note = empty.querySelector(".empty-note");
+      const bar = empty.querySelector(".empty-bar-inner");
+      if (title) {
+        title.textContent = st === "running" ? "报告生成中…" : st === "fail" ? "报告生成失败" : "报告未就绪";
+      }
+      if (note) note.textContent = data.detail || data.error || "";
+      if (bar) {
+        const pct = Math.max(0, Math.min(100, Number(data.progress_pct) || 0));
+        bar.style.width = st === "running" ? pct + "%" : "0%";
+      }
+      renderSlotSteps(empty, data);
     }
   }
-  if (st === "running") {
-    const details = el.querySelector("details");
-    if (details) details.open = true;
-  }
-  loadReportFrame(el);
+  if (st === "running" && details) details.open = true;
+  loadReportFrame(el, data);
 }
 function renderServices(services) {
   const root = document.getElementById("status-dash");
@@ -275,6 +346,9 @@ function renderServices(services) {
 }
 function applyHub(data) {
   if (!data) return;
+  const rev = hubRevision(data);
+  if (rev && rev === __hubRevision) return;
+  __hubRevision = rev;
   window.HUB_STATUS = data;
   const td = document.getElementById("trade-date");
   if (td) td.textContent = data.trade_date || "";
@@ -287,17 +361,28 @@ function hubJsonUrl() {
   const td = (window.HUB_STATUS && window.HUB_STATUS.trade_date) || qp("date") || document.body.dataset.tradeDate;
   return td ? "../data/report_hub/" + td + ".json" : "";
 }
-function pollHub() {
+function pollHubViaFetch() {
   const url = hubJsonUrl();
-  if (!url) return;
+  if (!url) { __hubPollPending = false; return; }
   fetch(url + "?t=" + Date.now())
     .then((r) => r.json())
-    .then(applyHub)
-    .catch(() => {
-      const s = document.createElement("script");
-      s.src = "hub_status.js?t=" + Date.now();
-      document.body.appendChild(s);
-    });
+    .then((data) => { __hubPollPending = false; applyHub(data); })
+    .catch(() => { __hubPollPending = false; pollHubViaScript(); });
+}
+function pollHubViaScript() {
+  const old = document.getElementById("hub-status-loader");
+  if (old) old.remove();
+  const s = document.createElement("script");
+  s.id = "hub-status-loader";
+  s.src = "hub_status.js?t=" + Date.now();
+  s.onerror = () => { __hubPollPending = false; pollHubViaFetch(); };
+  s.onload = () => { __hubPollPending = false; };
+  document.body.appendChild(s);
+}
+function pollHub() {
+  if (__hubPollPending) return;
+  __hubPollPending = true;
+  pollHubViaScript();
 }
 document.querySelectorAll(".report-item details").forEach((details) => {
   details.addEventListener("toggle", () => {
@@ -307,7 +392,9 @@ document.querySelectorAll(".report-item details").forEach((details) => {
       document.querySelectorAll(".report-item details[open]").forEach((other) => {
         if (other !== details) other.open = false;
       });
-      loadReportFrame(item);
+      const slotId = item.dataset.slot || "";
+      const slotData = (window.HUB_STATUS && window.HUB_STATUS.slots || {})[slotId] || {};
+      loadReportFrame(item, slotData);
     } else if (item.querySelector(".report-frame")) {
       item.querySelector(".report-frame").hidden = true;
       const empty = item.querySelector(".report-empty");
@@ -419,7 +506,7 @@ def build_hub_page(hub: dict[str, Any]) -> str:
     <div class="dash-groups">{dash_groups}</div>
   </section>
   <ul class="report-list">{list_html}</ul>
-  <p class="footer">自动刷新状态 · 展开后内嵌完整报告（高度随内容）</p>
+  <p class="footer">每 2 秒自动刷新状态与报告 · 展开后内嵌完整报告（高度随内容）</p>
 </div>
 <script>window.__HUB_BOOT__={boot};</script>
 <script>{_HUB_JS}</script>

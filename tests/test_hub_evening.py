@@ -1,15 +1,17 @@
 """Hub 四卡：昨收 / 开盘 / 午间 / 晚间收盘。"""
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "packages"))
 
-from report.hub import aggregate_hub
+from report.hub import aggregate_hub, refresh_hub_feed
 
 
 class TestHubEveningServeDay(unittest.TestCase):
@@ -60,6 +62,24 @@ class TestHubEveningServeDay(unittest.TestCase):
         hub = aggregate_hub(date(2026, 6, 12))
         self.assertEqual(hub["trade_date"], "2026-06-12")
         self.assertTrue(hub["slots"]["evening"]["report_ready"])
+
+    def test_refresh_hub_feed_writes_js_without_index(self) -> None:
+        from report.hub import publish_hub
+
+        publish_hub(date(2026, 6, 12))
+        index_before = (ROOT / "reports" / "index.html").read_text(encoding="utf-8")
+        json_path = ROOT / "data" / "report_hub" / "2026-06-12.json"
+        json_before = json.loads(json_path.read_text(encoding="utf-8"))
+        with patch("report.hub.now_iso", return_value="2099-01-01 00:00:00"), patch(
+            "report.system_status.now_iso", return_value="2099-01-01 00:00:00"
+        ), patch("report.hub._FEED_MIN_INTERVAL_SEC", 0.0):
+            path = refresh_hub_feed(date(2026, 6, 12), force=True)
+        self.assertIsNotNone(path)
+        json_after = json.loads(json_path.read_text(encoding="utf-8"))
+        index_after = (ROOT / "reports" / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(json_after["updated_at"], "2099-01-01 00:00:00")
+        self.assertNotEqual(json_before["updated_at"], json_after["updated_at"])
+        self.assertEqual(index_before, index_after)
 
 
 if __name__ == "__main__":

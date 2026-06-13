@@ -40,9 +40,9 @@ def write_status(payload: dict[str, Any], day: date) -> Path:
 def publish_status(day: date, status: dict[str, Any]) -> None:
     status["seq"] = int(status.get("seq") or 0) + 1
     write_status(status, day)
-    from report.hub import publish_hub
+    from report.hub import refresh_hub_feed
 
-    publish_hub(day)
+    refresh_hub_feed(day, force=True)
 
 
 def begin_run(day: date, *, open_browser: bool = True) -> None:
